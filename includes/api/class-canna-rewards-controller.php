@@ -30,11 +30,18 @@ class Canna_Rewards_Controller {
         global $wpdb;
         $user_id = get_current_user_id();
         $code_to_claim = sanitize_text_field($request->get_param('code'));
-        if (empty($code_to_claim)) return new WP_REST_Response(['success' => false, 'message' => 'A code must be provided.'], 400);
+        if (empty($code_to_claim)) return new WP_Error('rest_bad_request', 'A code must be provided.', ['status' => 400]);
         $table_name = $wpdb->prefix . 'canna_reward_codes';
         $code_data = $wpdb->get_row($wpdb->prepare("SELECT * FROM $table_name WHERE code = %s", $code_to_claim));
-        if (!$code_data) return new WP_REST_Response(['success' => false, 'message' => 'This code is invalid.'], 404);
-        if ($code_data->is_used == 1) return new WP_REST_Response(['success' => false, 'message' => 'This code has already been used.'], 400);
+        
+        // --- MODIFIED: Return specific error for invalid codes ---
+        if (!$code_data) {
+            return new WP_Error('rest_code_invalid', 'This code is invalid.', ['status' => 404]);
+        }
+        // --- MODIFIED: Return specific error for used codes ---
+        if ($code_data->is_used == 1) {
+            return new WP_Error('rest_code_already_used', 'This code has already been used.', ['status' => 400]);
+        }
         
         $has_completed_first_scan = get_user_meta($user_id, '_has_completed_first_scan', true);
         $is_first_scan = ($has_completed_first_scan === false || $has_completed_first_scan === '');

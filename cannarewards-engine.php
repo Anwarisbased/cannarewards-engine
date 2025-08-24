@@ -32,8 +32,10 @@ require_once CANNA_PLUGIN_DIR . 'includes/class-canna-db.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-points-handler.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-api-manager.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-integrations.php';
+require_once CANNA_PLUGIN_DIR . 'includes/class-canna-custom-fields.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-admin-menu.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-profile.php';
+require_once CANNA_PLUGIN_DIR . 'admin/class-canna-product-metabox.php'; // --- 1. INCLUDE NEW METABOX CLASS ---
 
 // =============================================================================
 // 2. PLUGIN HOOKS
@@ -60,6 +62,8 @@ function canna_rewards_run() {
     Canna_Admin_Menu::init();
     Canna_User_Profile::init();
     Canna_Integrations::init();
+    Canna_Custom_Fields::init();
+    Canna_Product_Metabox::init(); // --- 2. INITIALIZE NEW METABOX CLASS ---
 }
 add_action('plugins_loaded', 'canna_rewards_run');
 

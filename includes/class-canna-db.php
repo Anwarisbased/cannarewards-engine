@@ -20,6 +20,7 @@ class Canna_DB {
             code varchar(100) NOT NULL,
             points int(11) NOT NULL,
             sku varchar(100) DEFAULT '' NOT NULL,
+            batch_id varchar(255) DEFAULT '' NOT NULL,
             is_used tinyint(1) DEFAULT 0 NOT NULL,
             user_id bigint(20) unsigned,
             claimed_at datetime,
