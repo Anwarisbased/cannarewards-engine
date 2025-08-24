@@ -16,9 +16,6 @@ if (!defined('WPINC')) {
     die;
 }
 
-// NOTE: Once the refactor is complete, you can rename this file to `cannarewards-engine.php`
-// and update the "Plugin Name" above to remove "(Refactored)".
-
 // Define plugin constants for easy and reliable access to paths and files.
 define('CANNA_PLUGIN_FILE', __FILE__);
 define('CANNA_PLUGIN_DIR', plugin_dir_path(__FILE__));
@@ -33,7 +30,7 @@ define('CANNA_PLUGIN_VERSION', '5.0.0');
 require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-db.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-points-handler.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-api-controller.php';
+require_once CANNA_PLUGIN_DIR . 'includes/class-canna-api-manager.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-integrations.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-admin-menu.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-profile.php';
@@ -59,12 +56,13 @@ function canna_rewards_run() {
     add_action('init', 'canna_register_rank_post_type', 0);
 
     // Initialize all necessary classes.
-    Canna_API_Controller::init();
+    Canna_API_Manager::init();
     Canna_Admin_Menu::init();
     Canna_User_Profile::init();
     Canna_Integrations::init();
 }
 add_action('plugins_loaded', 'canna_rewards_run');
+
 /**
  * Clears the rank structure cache when a rank post is saved or deleted.
  * Ensures that rank changes are immediately reflected in the API.
@@ -74,5 +72,3 @@ function canna_clear_rank_cache() {
 }
 add_action('save_post_canna_rank', 'canna_clear_rank_cache');
 add_action('delete_post', 'canna_clear_rank_cache');
-// The `cannarewards-engine.php` legacy file is no longer needed or loaded.
-// This file is now the single source of truth for the plugin's operation.
