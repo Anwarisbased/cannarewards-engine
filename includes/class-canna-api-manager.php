@@ -31,6 +31,8 @@ class Canna_API_Manager {
      */
     private static function load_controllers() {
         $controller_path = CANNA_PLUGIN_DIR . 'includes/api/';
+        require_once $controller_path . 'class-canna-auth-controller.php';
+        require_once $controller_path . 'class-canna-referral-controller.php';
         require_once $controller_path . 'class-canna-user-controller.php';
         require_once $controller_path . 'class-canna-rewards-controller.php';
         require_once $controller_path . 'class-canna-content-controller.php';
@@ -41,6 +43,8 @@ class Canna_API_Manager {
      * Calls the register_routes method on each specialized controller.
      */
     public static function register_all_routes() {
+        Canna_Auth_Controller::register_routes();
+        Canna_Referral_Controller::register_routes();
         Canna_User_Controller::register_routes();
         Canna_Rewards_Controller::register_routes();
         Canna_Content_Controller::register_routes();
