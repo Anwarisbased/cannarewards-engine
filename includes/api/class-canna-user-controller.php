@@ -29,11 +29,26 @@ class Canna_User_Controller {
         $all_ranks = canna_get_rank_structure();
         $settings = get_option('canna_rewards_options', []);
         
+        // --- START: DYNAMIC THEME OBJECT CREATION ---
         $theme_options = [
-            'primaryColor'   => $settings['primary_color'] ?? '#000000',
-            'secondaryColor' => $settings['secondary_color'] ?? '#FBBF24',
-            'primaryFont'    => $settings['primary_font'] ?? 'Inter',
+            // key in API response => key in wp_options
+            'primaryFont'         => $settings['theme_primary_font'] ?? null,
+            'radius'              => $settings['theme_radius'] ?? null,
+            'background'          => $settings['theme_background'] ?? null,
+            'foreground'          => $settings['theme_foreground'] ?? null,
+            'card'                => $settings['theme_card'] ?? null,
+            'primary'             => $settings['theme_primary'] ?? null,
+            'primary-foreground'  => $settings['theme_primary_foreground'] ?? null,
+            'secondary'           => $settings['theme_secondary'] ?? null,
+            'destructive'         => $settings['theme_destructive'] ?? null,
         ];
+
+        // Filter out any null values so we don't send empty keys
+        $theme_options = array_filter($theme_options, function ($value) {
+            return $value !== null && $value !== '';
+        });
+        // --- END: DYNAMIC THEME OBJECT CREATION ---
+        
         $response_settings = [
             'referralBannerText' => $settings['referral_banner_text'] ?? '🎁 Earn More By Inviting Your Friends',
             'theme'              => $theme_options,

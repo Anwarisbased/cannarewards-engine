@@ -42,12 +42,29 @@ class Canna_Admin_Menu {
         add_settings_field('referrer_bonus_points', 'Referrer Bonus Points', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referrer_bonus_points', 'type' => 'number', 'description' => 'Points the referrer gets after their friend completes their first scan. Default: 200.']);
         add_settings_field('referral_banner_text', 'Referral Banner Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_banner_text', 'type' => 'text', 'description' => 'e.g., "🎁 Earn More By Inviting Your Friends"']);
         
-        // Theme Section
-        add_settings_section('canna_settings_section_theme', 'Theme & Branding Configuration', null, 'canna_rewards_settings');
-        add_settings_field('primary_color', 'Primary Color', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'primary_color', 'type' => 'color', 'description' => 'Main brand color for buttons, links, etc.']);
-        add_settings_field('secondary_color', 'Secondary/Accent Color', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'secondary_color', 'type' => 'color', 'description' => 'Color for accents and banners.']);
-        add_settings_field('primary_font', 'Primary Font (Google Fonts)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'primary_font', 'type' => 'text', 'description' => 'e.g., "Inter", "Montserrat", "Roboto Mono"']);
+        // --- START: NEW ADVANCED THEMING SECTION ---
+        add_settings_section('canna_settings_section_theme', 'Advanced Theming (Shadcn)', [self::class, 'theme_section_callback'], 'canna_rewards_settings');
+
+        // Layout & Fonts
+        add_settings_field('theme_primary_font', 'Primary Font (Google Fonts)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_font', 'type' => 'text', 'description' => 'e.g., "Inter", "Montserrat", "Roboto Mono"']);
+        add_settings_field('theme_radius', 'Border Radius', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_radius', 'type' => 'text', 'description' => 'Base corner radius for elements. e.g., "0.5rem", "1rem"']);
+
+        // Light Theme Colors
+        add_settings_field('theme_background', 'Background (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_background', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
+        add_settings_field('theme_foreground', 'Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_foreground', 'type' => 'text', 'description' => 'HSL format: 222.2 84% 4.9%']);
+        add_settings_field('theme_card', 'Card (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_card', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
+        add_settings_field('theme_primary', 'Primary (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary', 'type' => 'text', 'description' => 'HSL format: 222.2 47.4% 11.2%']);
+        add_settings_field('theme_primary_foreground', 'Primary Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_foreground', 'type' => 'text', 'description' => 'HSL format: 210 40% 98%']);
+        add_settings_field('theme_secondary', 'Secondary (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_secondary', 'type' => 'text', 'description' => 'HSL format: 210 40% 96.1%']);
+        add_settings_field('theme_destructive', 'Destructive (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_destructive', 'type' => 'text', 'description' => 'HSL format: 0 84.2% 60.2%']);
+        // --- END: NEW ADVANCED THEMING SECTION ---
     }
+    
+    // --- START: NEW SECTION CALLBACK ---
+    public static function theme_section_callback() {
+        echo '<p>Control the PWA\'s visual appearance. Use HSL values (e.g., "222.2 47.4% 11.2%") for colors, as defined in <code>globals.css</code>. Leave fields blank to use the PWA\'s default styling.</p>';
+    }
+    // --- END: NEW SECTION CALLBACK ---
 
     /**
      * Renders a generic HTML input field for a setting.
@@ -56,7 +73,7 @@ class Canna_Admin_Menu {
     public static function field_html_callback($args) {
         $options = get_option('canna_rewards_options');
         $value = $options[$args['id']] ?? '';
-        printf('<input type="%s" id="%s" name="canna_rewards_options[%s]" value="%s" class="regular-text" /><p class="description">%s</p>', esc_attr($args['type']), esc_attr($args['id']), esc_attr($args['id']), esc_attr($value), esc_html($args['description']));
+        printf('<input type="%s" id="%s" name="canna_rewards_options[%s]" value="%s" class="regular-text" placeholder="%s" /><p class="description">%s</p>', esc_attr($args['type']), esc_attr($args['id']), esc_attr($args['id']), esc_attr($value), esc_attr($args['description'] ?? ''), esc_html($args['description'] ?? ''));
     }
 
     /**
