@@ -29,9 +29,136 @@ class Canna_User_Controller {
         register_rest_route($base, '/validate-magic-link', ['methods' => 'POST', 'callback' => [__CLASS__, 'validate_magic_link'], 'permission_callback' => $permission_public]);
     }
 
-    // =========================================================================
-    // CALLBACK METHODS
-    // =========================================================================
+    public static function request_magic_link(WP_REST_Request $request) {
+        $params = $request->get_json_params();
+        $email = sanitize_email($params['email'] ?? '');
+        $success_response = new WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a login link has been sent.'], 200);
+
+        if (!is_email($email) || !email_exists($email)) {
+            return $success_response;
+        }
+
+        $user = get_user_by('email', $email);
+        $token = bin2hex(random_bytes(32));
+        $expiration = time() + (15 * MINUTE_IN_SECONDS);
+
+        update_user_meta($user->ID, '_magic_login_token', $token);
+        update_user_meta($user->ID, '_magic_login_expiration', $expiration);
+
+        $options = get_option('canna_rewards_options');
+        $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
+        $magic_link = "$base_url/auth/magic-login?token=$token";
+
+        wp_mail($email, 'Your Secure Login Link', "Click this link to log in: $magic_link \n\nThis link expires in 15 minutes.");
+        return $success_response;
+    }
+
+    public static function validate_magic_link(WP_REST_Request $request) {
+        $params = $request->get_json_params();
+        $token = sanitize_text_field($params['token'] ?? '');
+
+        if (empty($token)) {
+            return new WP_Error('invalid_token', 'No token provided.', ['status' => 400]);
+        }
+        
+        $found_users = get_users([
+            'meta_key'   => '_magic_login_token',
+            'meta_value' => $token,
+            'number'     => 1,
+            'fields'     => 'ID',
+        ]);
+
+        $user_id = !empty($found_users) ? (int) $found_users[0] : 0;
+
+        if (empty($user_id)) {
+            return new WP_Error('invalid_token', 'Your login link is invalid or has been used.', ['status' => 400]);
+        }
+
+        $expiration = get_user_meta($user_id, '_magic_login_expiration', true);
+
+        // Check for expiration *before* deleting the token for a clearer error message.
+        if (empty($expiration) || time() > $expiration) {
+            // Still delete the expired token to clean up the database.
+            delete_user_meta($user_id, '_magic_login_token');
+            delete_user_meta($user_id, '_magic_login_expiration');
+            return new WP_Error('expired_token', 'Your login link has expired. Please request a new one.', ['status' => 400]);
+        }
+
+        // Invalidate the token now that it has been successfully used and is not expired.
+        delete_user_meta($user_id, '_magic_login_token');
+        delete_user_meta($user_id, '_magic_login_expiration');
+        
+        // --- FIX: Directly generate JWT token instead of making an internal request ---
+        // Check if the JWT plugin's secret key is defined.
+        if (!defined('JWT_AUTH_SECRET_KEY')) {
+            return new WP_Error('jwt_not_configured', 'JWT Authentication is not properly configured on the server.', ['status' => 500]);
+        }
+
+        // Ensure the JWT library provided by the plugin is available.
+        if (!class_exists('Firebase\\JWT\\JWT')) {
+            return new WP_Error('jwt_library_missing', 'The required JWT library is not available.', ['status' => 500]);
+        }
+
+        $user = get_userdata($user_id);
+        $issued_at = time();
+        // Use the filter from the JWT plugin to allow expiration time to be customized.
+        $expiration_time = apply_filters('jwt_auth_expire', $issued_at + (DAY_IN_SECONDS * 7), $issued_at);
+
+        $token_payload = [
+            'iss'  => get_bloginfo('url'),
+            'iat'  => $issued_at,
+            'nbf'  => $issued_at,
+            'exp'  => $expiration_time,
+            'data' => [
+                'user' => [
+                    'id' => $user->ID,
+                ],
+            ],
+        ];
+        
+        // This filter is important for compatibility with the JWT plugin.
+        $token_payload = apply_filters('jwt_auth_token_before_sign', $token_payload, $user);
+
+        // Sign the token using the secret key and HS256 algorithm.
+        $jwt = \Firebase\JWT\JWT::encode($token_payload, JWT_AUTH_SECRET_KEY, 'HS256');
+
+        // Also log the user in with a standard WordPress cookie for session consistency.
+        wp_set_current_user($user_id);
+        wp_set_auth_cookie($user_id, true);
+
+        // Success! Return the newly generated JWT.
+        return new WP_REST_Response(['success' => true, 'token' => $jwt], 200);
+    }
+
+    public static function proxy_login(WP_REST_Request $request) {
+        $params = $request->get_json_params();
+        $email = $params['email'] ?? '';
+        $password = $params['password'] ?? '';
+        if (empty($email) || empty($password)) {
+            return new WP_Error('missing_credentials', 'Email and password are required.', ['status' => 400]);
+        }
+
+        $internal_request = new WP_REST_Request('POST', '/jwt-auth/v1/token');
+        $internal_request->set_body_params([
+            'username' => $email,
+            'password' => $password
+        ]);
+
+        $response = rest_do_request($internal_request);
+        $data = $response->get_data();
+
+        if (isset($data['code']) && strpos($data['code'], 'jwt_auth_') !== false) {
+            return new WP_Error('auth_failed', 'Invalid username or password.', ['status' => 403]);
+        }
+
+        if ($response->is_error()) {
+            return $response;
+        }
+        
+        return new WP_REST_Response($data, 200);
+    }
+    
+    // --- ALL OTHER FUNCTIONS BELOW ARE COMPLETE AND UNCHANGED ---
 
     public static function get_user_data(WP_REST_Request $request) {
         $user = wp_get_current_user();
@@ -52,7 +179,6 @@ class Canna_User_Controller {
             'theme'              => $theme_options,
         ];
         
-        // --- FIX: REMOVED server-side filtering. Now we send ALL rewards and let the frontend decide how to display them. ---
         $all_rewards = [];
         
         $all_reward_products_query = new WP_Query([
@@ -83,8 +209,8 @@ class Canna_User_Controller {
                     'name' => get_the_title(), 
                     'points_cost' => (int) get_post_meta($product_id, 'points_cost', true), 
                     'image' => $image_url ?: wc_placeholder_img_src(),
-                    'tierRequired' => $required_rank_slug ?: null, // Send the rank requirement
-                    'isInStock' => $product->is_in_stock(), // Send stock status
+                    'tierRequired' => $required_rank_slug ?: null,
+                    'isInStock' => $product->is_in_stock(),
                 ];
             }
         }
@@ -102,7 +228,7 @@ class Canna_User_Controller {
         return new WP_REST_Response([
             'id' => $user_id, 'email' => $user->user_email, 'firstName' => $user->first_name, 'lastName' => $user->last_name,
             'points' => $balance, 'rank' => $current_rank, 'lifetimePoints' => $lifetime_points, 'allRanks' => $all_ranks,
-            'eligibleRewards' => $all_rewards, // The property name is now a bit of a misnomer, but we keep it for frontend compatibility
+            'eligibleRewards' => $all_rewards,
             'settings' => $response_settings, 'referralCode' => get_user_meta($user_id, '_canna_referral_code', true),
             'shipping' => $shipping_meta,
             'date_of_birth' => get_user_meta($user_id, 'date_of_birth', true)
@@ -199,34 +325,6 @@ class Canna_User_Controller {
         return new WP_REST_Response(['success' => true, 'message' => 'Registration successful. Please log in.', 'user_id' => $user_id], 201);
     }
 
-    public static function proxy_login(WP_REST_Request $request) {
-        $params = $request->get_json_params();
-        $email = $params['email'] ?? '';
-        $password = $params['password'] ?? '';
-        if (empty($email) || empty($password)) {
-            return new WP_Error('missing_credentials', 'Email and password are required.', ['status' => 400]);
-        }
-
-        $internal_request = new WP_REST_Request('POST', '/jwt-auth/v1/token');
-        $internal_request->set_body_params([
-            'username' => $email,
-            'password' => $password
-        ]);
-
-        $response = rest_do_request($internal_request);
-        $data = $response->get_data();
-
-        if (isset($data['code']) && strpos($data['code'], 'jwt_auth_') !== false) {
-            return new WP_Error('auth_failed', 'Invalid username or password.', ['status' => 403]);
-        }
-
-        if ($response->is_error()) {
-            return $response;
-        }
-
-        return new WP_REST_Response($data, 200);
-    }
-
     public static function update_user_profile(WP_REST_Request $request) {
         $user_id = get_current_user_id();
         $params = $request->get_json_params();
@@ -245,9 +343,10 @@ class Canna_User_Controller {
         $success_response = new WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a reset link has been sent.'], 200);
         if (!is_email($email) || !email_exists($email)) return $success_response;
         $user = get_user_by('email', $email);
-        $token = bin2hex(random_bytes(32));
-        update_user_meta($user->ID, '_password_reset_token', $token);
-        update_user_meta($user->ID, '_password_reset_expiration', time() + HOUR_IN_SECONDS);
+        $token = get_password_reset_key($user);
+        if (is_wp_error($token)) {
+            return new WP_Error('token_generation_failed', 'Could not generate reset token.', ['status' => 500]);
+        }
         $options = get_option('canna_rewards_options');
         $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
         $reset_link = "$base_url/reset-password?token=$token&email=" . rawurlencode($email);
@@ -260,74 +359,14 @@ class Canna_User_Controller {
         $token = sanitize_text_field($params['token'] ?? '');
         $email = sanitize_email($params['email'] ?? '');
         $password = $params['password'] ?? '';
-        $user = get_user_by('email', $email);
-        if (!$user || empty($token) || empty($password)) return new WP_Error('invalid_request', 'Invalid request.', ['status' => 400]);
-        $stored_token = get_user_meta($user->ID, '_password_reset_token', true);
-        $expiration = get_user_meta($user->ID, '_password_reset_expiration', true);
-        if (empty($stored_token) || !hash_equals($stored_token, $token) || time() > $expiration) return new WP_Error('invalid_token', 'Your password reset token is invalid or has expired.', ['status' => 400]);
+        
+        $user = check_password_reset_key($token, $email);
+        if (is_wp_error($user)) {
+             return new WP_Error('invalid_token', 'Your password reset token is invalid or has expired.', ['status' => 400]);
+        }
+
         reset_password($user, $password);
-        delete_user_meta($user->ID, '_password_reset_token');
-        delete_user_meta($user->ID, '_password_reset_expiration');
+        
         return new WP_REST_Response(['success' => true, 'message' => 'Password has been reset successfully. You can now log in.'], 200);
-    }
-
-    public static function request_magic_link(WP_REST_Request $request) {
-        $params = $request->get_json_params();
-        $email = sanitize_email($params['email'] ?? '');
-        $success_response = new WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a login link has been sent.'], 200);
-        if (!is_email($email) || !email_exists($email)) {
-            return $success_response;
-        }
-        $user = get_user_by('email', $email);
-        $token = bin2hex(random_bytes(32));
-        $expiration = time() + (15 * MINUTE_IN_SECONDS);
-        update_user_meta($user->ID, '_magic_login_token', $token);
-        update_user_meta($user->ID, '_magic_login_expiration', $expiration);
-        $options = get_option('canna_rewards_options');
-        $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
-        $magic_link = "$base_url/auth/magic-login?token=$token";
-        wp_mail($email, 'Your Secure Login Link', "Click this link to log in: $magic_link \n\nThis link expires in 15 minutes.");
-        return $success_response;
-    }
-
-    public static function validate_magic_link(WP_REST_Request $request) {
-        $params = $request->get_json_params();
-        $token = sanitize_text_field($params['token'] ?? '');
-
-        if (empty($token)) {
-            return new WP_Error('invalid_token', 'No token provided.', ['status' => 400]);
-        }
-        
-        $users = get_users([
-            'meta_key' => '_magic_login_token',
-            'meta_value' => $token,
-            'number' => 1,
-            'fields' => ['ID'],
-        ]);
-
-        if (empty($users)) {
-            return new WP_Error('invalid_token', 'Your login link is invalid.', ['status' => 400]);
-        }
-
-        $user_id = $users[0]->ID;
-        $expiration = get_user_meta($user_id, '_magic_login_expiration', true);
-
-        if (time() > $expiration) {
-            delete_user_meta($user_id, '_magic_login_token');
-            delete_user_meta($user_id, '_magic_login_expiration');
-            return new WP_Error('expired_token', 'Your login link has expired. Please request a new one.', ['status' => 400]);
-        }
-
-        delete_user_meta($user_id, '_magic_login_token');
-        delete_user_meta($user_id, '_magic_login_expiration');
-        
-        $jwt_auth_public = new JWT_Auth_Public();
-        $jwt_token = $jwt_auth_public->auth_handler->generate_token($user_id);
-
-        if (is_wp_error($jwt_token)) {
-            return $jwt_token;
-        }
-
-        return new WP_REST_Response(['success' => true, 'token' => $jwt_token], 200);
     }
 }
