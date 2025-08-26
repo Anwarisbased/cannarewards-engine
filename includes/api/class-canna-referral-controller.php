@@ -59,8 +59,20 @@ class Canna_Referral_Controller {
         $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : 'https://cannarewards-pwa.vercel.app';
         $scan_link = "{$base_url}/scan";
         $referee_name = $referee->first_name ? ' ' . $referee->first_name : '';
-        $share_text = "Hey" . $referee_name . "! Just a friendly reminder from " . $referrer->first_name . " to scan your first CannaRewards product. You're one scan away from unlocking your welcome gift! Scan here: " . $scan_link;
+        $referrer_name = $referrer->first_name ?: 'Your friend';
+        
+        // --- MODIFIED: Return an array of message options ---
+        $share_options = [
+            "Friendly reminder from {$referrer_name} to scan your first product. Your welcome gift is waiting! Scan here: {$scan_link}",
+            "You're one scan away from unlocking your welcome gift and earning points. Scan your first product to claim it: {$scan_link}",
+            "Just a quick nudge from {$referrer_name}! Your CannaRewards welcome gift is ready to be claimed after your first scan: {$scan_link}"
+        ];
+        
         set_transient($transient_key, true, DAY_IN_SECONDS);
-        return new WP_REST_Response(['success' => true, 'message' => 'Nudge ready to be shared.', 'share_text' => $share_text], 200);
+        return new WP_REST_Response([
+            'success' => true, 
+            'message' => 'Nudge options ready to be shared.', 
+            'share_options' => $share_options
+        ], 200);
     }
 }
