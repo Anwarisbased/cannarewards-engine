@@ -41,6 +41,16 @@ class Canna_Admin_Menu {
         add_settings_field('referral_signup_points', 'New User Referral Points', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_signup_points', 'type' => 'number', 'description' => 'Points a new user gets for signing up with a referral code. Default: 50.']);
         add_settings_field('referrer_bonus_points', 'Referrer Bonus Points', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referrer_bonus_points', 'type' => 'number', 'description' => 'Points the referrer gets after their friend completes their first scan. Default: 200.']);
         add_settings_field('referral_banner_text', 'Referral Banner Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_banner_text', 'type' => 'text', 'description' => 'e.g., "🎁 Earn More By Inviting Your Friends"']);
+
+        // --- START: BRAND PERSONALITY SECTION ---
+        add_settings_section('canna_settings_section_personality', 'Brand Personality Engine', null, 'canna_rewards_settings');
+        add_settings_field('points_name', 'Points Name', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'points_name', 'type' => 'text', 'description' => 'The name for your points currency (e.g., "Tokens", "Cred", "Buds"). Default: Points.']);
+        add_settings_field('rank_name', 'Rank Name', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'rank_name', 'type' => 'text', 'description' => 'The name for your loyalty tiers (e.g., "Status", "Level", "Cred"). Default: Rank.']);
+        add_settings_field('welcome_header', 'Welcome Header', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'welcome_header', 'type' => 'text', 'description' => 'The main headline on the login/register screen.']);
+        add_settings_field('scan_cta', 'Scanner Call-to-Action', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'scan_cta', 'type' => 'text', 'description' => 'The text on the primary scan button.']);
+        add_settings_field('dashboard_layout', 'Dashboard Layout', [self::class, 'field_select_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'dashboard_layout', 'options' => ['default' => 'Default', 'compact' => 'Compact', 'gamified' => 'Gamified'], 'description' => 'Controls the layout of the main user dashboard in the PWA.']);
+        add_settings_field('animation_style', 'Animation Style', [self::class, 'field_select_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'animation_style', 'options' => ['default' => 'Default', 'subtle' => 'Subtle', 'playful' => 'Playful'], 'description' => 'Controls the style of animations and transitions in the PWA.']);
+        // --- END: BRAND PERSONALITY SECTION ---
         
         // --- START: NEW ADVANCED THEMING SECTION ---
         add_settings_section('canna_settings_section_theme', 'Advanced Theming (Shadcn)', [self::class, 'theme_section_callback'], 'canna_rewards_settings');
@@ -88,6 +98,21 @@ class Canna_Admin_Menu {
         echo '<option value="">-- Select a Reward --</option>';
         foreach ($products as $product) {
             printf('<option value="%s"%s>%s</option>', esc_attr($product->get_id()), selected($value, $product->get_id(), false), esc_html($product->get_name()));
+        }
+        echo '</select>';
+        echo '<p class="description">' . esc_html($args['description']) . '</p>';
+    }
+
+    /**
+     * Renders a dropdown select field for a setting.
+     * @param array $args Arguments passed from add_settings_field.
+     */
+    public static function field_select_callback($args) {
+        $options = get_option('canna_rewards_options');
+        $value = $options[$args['id']] ?? 'default';
+        echo '<select id="' . esc_attr($args['id']) . '" name="canna_rewards_options[' . esc_attr($args['id']) . ']">';
+        foreach ($args['options'] as $val => $label) {
+            printf('<option value="%s"%s>%s</option>', esc_attr($val), selected($value, $val, false), esc_html($label));
         }
         echo '</select>';
         echo '<p class="description">' . esc_html($args['description']) . '</p>';
