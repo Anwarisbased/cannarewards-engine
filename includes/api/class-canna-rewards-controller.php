@@ -95,6 +95,11 @@ class Canna_Rewards_Controller {
         $response_data['newBalance'] = Canna_Points_Handler::add_user_points($user_id, $points_awarded, $description);
         $wpdb->update($table_name, ['is_used' => 1, 'user_id' => $user_id, 'claimed_at' => current_time('mysql', 1)], ['id' => $code_data->id]);
         
+        // Trigger achievement check on scan
+        if (class_exists('Canna_Achievement_Handler')) {
+            Canna_Achievement_Handler::check_on_scan($user_id);
+        }
+
         return new WP_REST_Response($response_data, 200);
     }
 
@@ -167,6 +172,11 @@ class Canna_Rewards_Controller {
             
             // Reduce stock
             wc_update_product_stock($product, 1, 'decrease');
+
+            // Trigger achievement check on redeem
+            if (class_exists('Canna_Achievement_Handler')) {
+                Canna_Achievement_Handler::check_on_redeem($user_id);
+            }
 
             return new WP_REST_Response(['success' => true, 'message' => 'Reward redeemed successfully!', 'newBalance' => $new_balance, 'orderId' => $order->get_id()], 200);
         } catch (Exception $e) { 
