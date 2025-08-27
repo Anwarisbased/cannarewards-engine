@@ -231,3 +231,97 @@ function canna_register_achievement_post_type() {
     register_post_type('canna_achievement', $args);
 }
 add_action('init', 'canna_register_achievement_post_type');
+
+/**
+ * Synchronizes data from the 'canna_achievement' CPT to the 'canna_achievements' database table.
+ *
+ * This function is hooked to 'save_post_canna_achievement' and ensures that
+ * achievement data entered via the WordPress admin is mirrored in our custom table.
+ * It uses an INSERT ... ON DUPLICATE KEY UPDATE statement to handle both new
+ * achievements and updates to existing ones based on the unique 'achievement_key'.
+ *
+ * @since 5.0.0
+ *
+ * @param int $post_id The ID of the post being saved.
+ */
+function canna_sync_achievement_cpt_to_table($post_id) {
+    // If this is an autosave, our form has not been submitted, so we don't want to do anything.
+    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+        return;
+    }
+
+    // Check the user's permissions.
+    if (!current_user_can('edit_post', $post_id)) {
+        return;
+    }
+
+    // Only proceed for 'canna_achievement' post type.
+    if (get_post_type($post_id) !== 'canna_achievement') {
+        return;
+    }
+
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'canna_achievements';
+
+    // Retrieve data from the CPT and its custom fields.
+    $post_title      = get_the_title($post_id);
+    $post_content    = get_post_field('post_content', $post_id); // Use post_content for description
+    $achievement_key = get_post_meta($post_id, 'achievement_key', true);
+    $type            = get_post_meta($post_id, 'type', true);
+    $points_reward   = get_post_meta($post_id, 'points_reward', true);
+    $rarity          = get_post_meta($post_id, 'rarity', true);
+    $icon_url        = get_post_meta($post_id, 'icon_url', true);
+    $is_active       = get_post_meta($post_id, 'is_active', true);
+
+    // Ensure achievement_key is present, it's our primary key in the custom table.
+    if (empty($achievement_key)) {
+        // Optionally, log an error or set a default if key is missing.
+        // For now, we'll just return to prevent inserting invalid data.
+        error_log('CannaRewards: Attempted to sync achievement without a key for Post ID: ' . $post_id);
+        return;
+    }
+
+    // Prepare data for insertion/update.
+    $data = [
+        'achievement_key' => $achievement_key,
+        'type'            => sanitize_text_field($type),
+        'title'           => sanitize_text_field($post_title),
+        'description'     => wp_kses_post($post_content), // Sanitize content for description
+        'points_reward'   => absint($points_reward),
+        'rarity'          => sanitize_text_field($rarity),
+        'icon_url'        => esc_url_raw($icon_url),
+        'is_active'       => absint($is_active),
+    ];
+
+    // Define format for data.
+    $format = [
+        '%s', // achievement_key
+        '%s', // type
+        '%s', // title
+        '%s', // description
+        '%d', // points_reward
+        '%s', // rarity
+        '%s', // icon_url
+        '%d', // is_active
+    ];
+
+    // Perform INSERT ... ON DUPLICATE KEY UPDATE
+    // This handles both new insertions and updates to existing rows based on achievement_key.
+    $wpdb->query(
+        $wpdb->prepare(
+            "INSERT INTO `{$table_name}`
+            (`achievement_key`, `type`, `title`, `description`, `points_reward`, `rarity`, `icon_url`, `is_active`)
+            VALUES (%s, %s, %s, %s, %d, %s, %s, %d)
+            ON DUPLICATE KEY UPDATE
+            `type` = VALUES(`type`),
+            `title` = VALUES(`title`),
+            `description` = VALUES(`description`),
+            `points_reward` = VALUES(`points_reward`),
+            `rarity` = VALUES(`rarity`),
+            `icon_url` = VALUES(`icon_url`),
+            `is_active` = VALUES(`is_active`)",
+            $data['achievement_key'], $data['type'], $data['title'], $data['description'], $data['points_reward'], $data['rarity'], $data['icon_url'], $data['is_active'],
+        )
+    );
+}
+add_action('save_post_canna_achievement', 'canna_sync_achievement_cpt_to_table');
