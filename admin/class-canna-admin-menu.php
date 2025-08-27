@@ -42,14 +42,17 @@ class Canna_Admin_Menu {
         add_settings_field('referrer_bonus_points', 'Referrer Bonus Points', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referrer_bonus_points', 'type' => 'number', 'description' => 'Points the referrer gets after their friend completes their first scan. Default: 200.']);
         add_settings_field('referral_banner_text', 'Referral Banner Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_banner_text', 'type' => 'text', 'description' => 'e.g., "🎁 Earn More By Inviting Your Friends"']);
         
-        // --- START: NEW ADVANCED THEMING SECTION ---
+        // --- BRAND PERSONALITY SECTION ---
+        add_settings_section('canna_settings_section_personality', 'Brand Personality Engine', [self::class, 'personality_section_callback'], 'canna_rewards_settings');
+        add_settings_field('points_name', 'Name for "Points"', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'points_name', 'type' => 'text', 'placeholder' => 'Points', 'description' => 'What do you call your loyalty currency? e.g., Buds, Tokens, Karma.']);
+        add_settings_field('rank_name', 'Name for "Rank"', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'rank_name', 'type' => 'text', 'placeholder' => 'Rank', 'description' => 'What do you call your loyalty tiers? e.g., Status, Level, Tier.']);
+        add_settings_field('welcome_header', 'Welcome Header Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'welcome_header', 'type' => 'text', 'placeholder' => 'Welcome, {firstName}', 'description' => 'Personalize the dashboard greeting. Use {firstName} as a placeholder.']);
+        add_settings_field('scan_cta', 'Scan Button CTA', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'scan_cta', 'type' => 'text', 'placeholder' => 'Scan Product', 'description' => 'The primary call-to-action text on the scan button.']);
+        
+        // Advanced Theming Section
         add_settings_section('canna_settings_section_theme', 'Advanced Theming (Shadcn)', [self::class, 'theme_section_callback'], 'canna_rewards_settings');
-
-        // Layout & Fonts
         add_settings_field('theme_primary_font', 'Primary Font (Google Fonts)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_font', 'type' => 'text', 'description' => 'e.g., "Inter", "Montserrat", "Roboto Mono"']);
         add_settings_field('theme_radius', 'Border Radius', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_radius', 'type' => 'text', 'description' => 'Base corner radius for elements. e.g., "0.5rem", "1rem"']);
-
-        // Light Theme Colors
         add_settings_field('theme_background', 'Background (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_background', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
         add_settings_field('theme_foreground', 'Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_foreground', 'type' => 'text', 'description' => 'HSL format: 222.2 84% 4.9%']);
         add_settings_field('theme_card', 'Card (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_card', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
@@ -57,29 +60,22 @@ class Canna_Admin_Menu {
         add_settings_field('theme_primary_foreground', 'Primary Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_foreground', 'type' => 'text', 'description' => 'HSL format: 210 40% 98%']);
         add_settings_field('theme_secondary', 'Secondary (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_secondary', 'type' => 'text', 'description' => 'HSL format: 210 40% 96.1%']);
         add_settings_field('theme_destructive', 'Destructive (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_destructive', 'type' => 'text', 'description' => 'HSL format: 0 84.2% 60.2%']);
-        // --- END: NEW ADVANCED THEMING SECTION ---
+    }
+
+    public static function personality_section_callback() {
+        echo '<p>Define the core language and feel of your rewards program to match your brand\'s voice.</p>';
     }
     
-    // --- START: NEW SECTION CALLBACK ---
     public static function theme_section_callback() {
         echo '<p>Control the PWA\'s visual appearance. Use HSL values (e.g., "222.2 47.4% 11.2%") for colors, as defined in <code>globals.css</code>. Leave fields blank to use the PWA\'s default styling.</p>';
     }
-    // --- END: NEW SECTION CALLBACK ---
 
-    /**
-     * Renders a generic HTML input field for a setting.
-     * @param array $args Arguments passed from add_settings_field.
-     */
     public static function field_html_callback($args) {
         $options = get_option('canna_rewards_options');
         $value = $options[$args['id']] ?? '';
-        printf('<input type="%s" id="%s" name="canna_rewards_options[%s]" value="%s" class="regular-text" placeholder="%s" /><p class="description">%s</p>', esc_attr($args['type']), esc_attr($args['id']), esc_attr($args['id']), esc_attr($value), esc_attr($args['description'] ?? ''), esc_html($args['description'] ?? ''));
+        printf('<input type="%s" id="%s" name="canna_rewards_options[%s]" value="%s" class="regular-text" placeholder="%s" /><p class="description">%s</p>', esc_attr($args['type']), esc_attr($args['id']), esc_attr($args['id']), esc_attr($value), esc_attr($args['placeholder'] ?? ''), esc_html($args['description'] ?? ''));
     }
 
-    /**
-     * Renders a dropdown select field populated with WooCommerce products.
-     * @param array $args Arguments passed from add_settings_field.
-     */
     public static function field_select_product_callback($args) {
         $options = get_option('canna_rewards_options');
         $value = $options[$args['id']] ?? '';
@@ -93,9 +89,6 @@ class Canna_Admin_Menu {
         echo '<p class="description">' . esc_html($args['description']) . '</p>';
     }
 
-    /**
-     * Renders the HTML for the main settings page container.
-     */
     public static function settings_page_html() {
         if (!current_user_can('manage_options')) return;
         ?>
@@ -112,9 +105,6 @@ class Canna_Admin_Menu {
         <?php
     }
 
-    /**
-     * Renders the HTML for the QR Code Generator page.
-     */
     public static function qr_generator_page_html() {
         if (!current_user_can('manage_options')) return;
         $products = wc_get_products(['status' => 'publish', 'limit' => -1]);
@@ -163,9 +153,6 @@ class Canna_Admin_Menu {
         <?php
     }
 
-    /**
-     * Handles the form submission for generating QR codes and streaming a CSV.
-     */
     public static function handle_code_generation() {
         if (!current_user_can('manage_options') || !isset($_POST['_wpnonce']) || !wp_verify_nonce($_POST['_wpnonce'], 'canna_generate_codes_nonce')) {
             wp_die('You are not authorized to perform this action.');
@@ -189,7 +176,6 @@ class Canna_Admin_Menu {
         $batch_id = uniqid('batch_' . sanitize_key($sku) . '_');
         $table_name = $wpdb->prefix . 'canna_reward_codes';
 
-        // --- FIX: Use the saved setting for the frontend URL ---
         $options = get_option('canna_rewards_options', []);
         $frontend_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
         if (empty($frontend_url)) {
