@@ -70,7 +70,6 @@ class Canna_Rewards_Controller {
             $settings = get_option('canna_rewards_options', []);
             $welcome_product_id = isset($settings['welcome_reward_product']) ? (int)$settings['welcome_reward_product'] : 0;
             if ($welcome_product_id > 0 && ($product = wc_get_product($welcome_product_id))) {
-                // If there's a welcome gift, award enough points to claim it
                 $points_cost = (int) get_post_meta($welcome_product_id, 'points_cost', true);
                 $points_awarded = $points_cost > 0 ? $points_cost : $points_awarded;
                 $response_data['message'] = 'Welcome! ' . $points_awarded . ' Points Added!';
@@ -78,7 +77,6 @@ class Canna_Rewards_Controller {
             } else {
                 $response_data['message'] = 'Welcome! ' . $points_awarded . ' Points Added!';
             }
-            // Referral bonus logic
             $referrer_id = get_user_meta($user_id, '_canna_referred_by_user_id', true);
             if (!empty($referrer_id)) {
                 $options = get_option('canna_rewards_options', []);
@@ -95,14 +93,11 @@ class Canna_Rewards_Controller {
         Canna_Points_Handler::add_user_points($user_id, $points_awarded, $description);
         $wpdb->update($table_name, ['is_used' => 1, 'user_id' => $user_id, 'claimed_at' => current_time('mysql', 1)], ['id' => $code_data->id]);
         
-        // Trigger achievement check on scan
         if (class_exists('Canna_Achievement_Handler')) {
             Canna_Achievement_Handler::check_on_scan($user_id);
         }
 
-        // --- FIX: Re-fetch the balance AFTER all transactions are complete ---
         $response_data['newBalance'] = get_user_points_balance($user_id);
-        // --- END FIX ---
 
         return new WP_REST_Response($response_data, 200);
     }
@@ -181,6 +176,15 @@ class Canna_Rewards_Controller {
             if (class_exists('Canna_Achievement_Handler')) {
                 Canna_Achievement_Handler::check_on_redeem($user_id);
             }
+
+            // --- ONBOARDING LOGIC ---
+            $has_redeemed_before = get_user_meta($user_id, '_has_completed_first_redeem', true);
+            if (!$has_redeemed_before) {
+                update_user_meta($user_id, '_has_completed_first_redeem', true);
+                // Assume step 1 was the first scan. This is step 2.
+                update_user_meta($user_id, '_onboarding_quest_step', 2);
+            }
+            // --- END ONBOARDING LOGIC ---
 
             return new WP_REST_Response(['success' => true, 'message' => 'Reward redeemed successfully!', 'newBalance' => $new_balance, 'orderId' => $order->get_id()], 200);
         } catch (Exception $e) { 

@@ -114,11 +114,30 @@ class Canna_User_Controller {
         $user_id = get_current_user_id();
         $params = $request->get_json_params();
         $update_data = ['ID' => $user_id];
+        
         if (isset($params['firstName'])) $update_data['first_name'] = sanitize_text_field($params['firstName']);
         if (isset($params['lastName'])) $update_data['last_name'] = sanitize_text_field($params['lastName']);
-        if (count($update_data) > 1) wp_update_user($update_data);
-        if (isset($params['phone'])) update_user_meta($user_id, 'phone_number', sanitize_text_field($params['phone']));
-        if (isset($params['dateOfBirth'])) update_user_meta($user_id, 'date_of_birth', sanitize_text_field($params['dateOfBirth']));
+        
+        if (count($update_data) > 1) {
+            wp_update_user($update_data);
+        }
+
+        if (isset($params['phone'])) {
+            update_user_meta($user_id, 'phone_number', sanitize_text_field($params['phone']));
+        }
+        
+        if (isset($params['dateOfBirth'])) {
+            update_user_meta($user_id, 'date_of_birth', sanitize_text_field($params['dateOfBirth']));
+
+            // --- ONBOARDING LOGIC ---
+            $current_step = (int) get_user_meta($user_id, '_onboarding_quest_step', true);
+            if ($current_step === 2 && !empty($params['dateOfBirth'])) {
+                // User is on step 2 and has now added their birthday. Advance to step 3.
+                update_user_meta($user_id, '_onboarding_quest_step', 3);
+            }
+            // --- END ONBOARDING LOGIC ---
+        }
+
         return new WP_REST_Response(['success' => true, 'message' => 'Profile updated successfully.'], 200);
     }
 }
