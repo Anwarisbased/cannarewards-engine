@@ -182,3 +182,52 @@ function canna_register_rank_post_type() {
     ];
     register_post_type('canna_rank', $args);
 }
+
+/**
+ * Registers the 'canna_achievement' Custom Post Type.
+ *
+ * This CPT is used to define achievements for the rewards program.
+ * Hooked into 'init' from the main plugin loader.
+ *
+ * @since 5.0.0
+ */
+function canna_register_achievement_post_type() {
+    $labels = [
+        'name'                  => _x('Achievements', 'Post Type General Name', 'canna-rewards'),
+        'singular_name'         => _x('Achievement', 'Post Type Singular Name', 'canna-rewards'),
+        'menu_name'             => __('Achievements', 'canna-rewards'),
+        'name_admin_bar'        => __('Achievement', 'canna-rewards'),
+        'all_items'             => __('All Achievements', 'canna-rewards'),
+        'add_new_item'          => __('Add New Achievement', 'canna-rewards'),
+        'add_new'               => __('Add New', 'canna-rewards'),
+        'new_item'              => __('New Achievement', 'canna-rewards'),
+        'edit_item'             => __('Edit Achievement', 'canna-rewards'),
+        'update_item'           => __('Update Achievement', 'canna-rewards'),
+        'view_item'             => __('View Achievement', 'canna-rewards'),
+        'search_items'          => __('Search Achievement', 'canna-rewards'),
+        'not_found'             => __('Not found', 'canna-rewards'),
+        'not_found_in_trash'    => __('Not found in Trash', 'canna-rewards'),
+    ];
+    $args = [
+        'label'                 => __('Achievement', 'canna-rewards'),
+        'description'           => __('Achievements for the Rewards Program', 'canna-rewards'),
+        'labels'                => $labels,
+        'supports'              => ['title', 'editor', 'custom-fields'], // 'editor' for description
+        'hierarchical'          => false,
+        'public'                => false, // Not publicly queryable
+        'show_ui'               => true,
+        'show_in_menu'          => true,
+        'menu_position'         => 22, // Below Ranks
+        'menu_icon'             => 'dashicons-awards',
+        'show_in_admin_bar'     => true,
+        'show_in_nav_menus'     => false,
+        'can_export'            => true,
+        'has_archive'           => false,
+        'exclude_from_search'   => true,
+        'publicly_queryable'    => false,
+        'capability_type'       => 'post',
+        'show_in_rest'          => true,
+    ];
+    register_post_type('canna_achievement', $args);
+}
+add_action('init', 'canna_register_achievement_post_type');

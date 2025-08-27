@@ -36,6 +36,7 @@ require_once CANNA_PLUGIN_DIR . 'includes/class-canna-custom-fields.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-admin-menu.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-profile.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-product-metabox.php';
+require_once CANNA_PLUGIN_DIR . 'admin/class-canna-achievement-metabox.php';
 // REMOVED: require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-actions.php';
 
 // =============================================================================
@@ -57,6 +58,7 @@ register_activation_hook(CANNA_PLUGIN_FILE, ['Canna_DB', 'activate']);
 function canna_rewards_run() {
     // Hook in the Custom Post Type registration from our core functions file.
     add_action('init', 'canna_register_rank_post_type', 0);
+    add_action('init', 'canna_register_achievement_post_type', 0);
 
     // Initialize all necessary classes.
     Canna_API_Manager::init();
@@ -65,6 +67,7 @@ function canna_rewards_run() {
     Canna_Integrations::init();
     Canna_Custom_Fields::init();
     Canna_Product_Metabox::init();
+    new Canna_Achievement_Metabox(); // Initialize the new metabox class
     // REMOVED: Canna_User_Actions::init();
 }
 add_action('plugins_loaded', 'canna_rewards_run');
