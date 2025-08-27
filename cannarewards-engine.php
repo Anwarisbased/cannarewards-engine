@@ -57,6 +57,8 @@ register_activation_hook(CANNA_PLUGIN_FILE, ['Canna_DB', 'activate']);
  * This function initializes our classes and hooks in procedural functions.
  */
 function canna_rewards_run() {
+    
+
     // Hook in the Custom Post Type registration from our core functions file.
     add_action('init', 'canna_register_rank_post_type', 0);
     add_action('init', 'canna_register_achievement_post_type', 0);

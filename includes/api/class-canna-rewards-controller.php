@@ -64,7 +64,7 @@ class Canna_Rewards_Controller {
         }
         
         $description = 'Claimed points from product SKU: ' . $code_data->sku;
-        $response_data = ['success' => true, 'newBalance' => 0, 'firstScanBonus' => ['isEligible' => false]];
+        $response_data = ['success' => true, 'firstScanBonus' => ['isEligible' => false]];
 
         if ($is_first_scan) {
             $settings = get_option('canna_rewards_options', []);
@@ -92,13 +92,17 @@ class Canna_Rewards_Controller {
             $response_data['message'] = $points_awarded . ' Points Added!';
         }
         
-        $response_data['newBalance'] = Canna_Points_Handler::add_user_points($user_id, $points_awarded, $description);
+        Canna_Points_Handler::add_user_points($user_id, $points_awarded, $description);
         $wpdb->update($table_name, ['is_used' => 1, 'user_id' => $user_id, 'claimed_at' => current_time('mysql', 1)], ['id' => $code_data->id]);
         
         // Trigger achievement check on scan
         if (class_exists('Canna_Achievement_Handler')) {
             Canna_Achievement_Handler::check_on_scan($user_id);
         }
+
+        // --- FIX: Re-fetch the balance AFTER all transactions are complete ---
+        $response_data['newBalance'] = get_user_points_balance($user_id);
+        // --- END FIX ---
 
         return new WP_REST_Response($response_data, 200);
     }
