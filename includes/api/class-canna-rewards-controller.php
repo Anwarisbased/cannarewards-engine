@@ -93,9 +93,14 @@ class Canna_Rewards_Controller {
         Canna_Points_Handler::add_user_points($user_id, $points_awarded, $description);
         $wpdb->update($table_name, ['is_used' => 1, 'user_id' => $user_id, 'claimed_at' => current_time('mysql', 1)], ['id' => $code_data->id]);
         
-        if (class_exists('Canna_Achievement_Handler')) {
-            Canna_Achievement_Handler::check_on_scan($user_id);
+        // --- NEW: Log action and run achievement engine ---
+        if (class_exists('Canna_Achievement_Engine')) {
+            $product_id = wc_get_product_id_by_sku($code_data->sku);
+            $context = ['product_id' => $product_id];
+            Canna_Achievement_Engine::log_action($user_id, 'scan', $context);
+            Canna_Achievement_Engine::process_event('scan', $user_id, $context);
         }
+        // --- END NEW ---
 
         $response_data['newBalance'] = get_user_points_balance($user_id);
 
@@ -172,10 +177,13 @@ class Canna_Rewards_Controller {
             // Reduce stock
             wc_update_product_stock($product, 1, 'decrease');
 
-            // Trigger achievement check on redeem
-            if (class_exists('Canna_Achievement_Handler')) {
-                Canna_Achievement_Handler::check_on_redeem($user_id);
+            // --- NEW: Log action and run achievement engine ---
+            if (class_exists('Canna_Achievement_Engine')) {
+                $context = ['product_id' => $product_id, 'points_cost' => $points_cost];
+                Canna_Achievement_Engine::log_action($user_id, 'redeem', $context);
+                Canna_Achievement_Engine::process_event('redeem', $user_id, $context);
             }
+            // --- END NEW ---
 
             // --- ONBOARDING LOGIC ---
             $has_redeemed_before = get_user_meta($user_id, '_has_completed_first_redeem', true);

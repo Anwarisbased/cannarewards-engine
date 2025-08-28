@@ -31,6 +31,7 @@ require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-db.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-points-handler.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-achievement-handler.php';
+require_once CANNA_PLUGIN_DIR . 'includes/class-canna-achievement-engine.php'; // <-- NEW
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-api-manager.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-integrations.php';
 require_once CANNA_PLUGIN_DIR . 'includes/class-canna-custom-fields.php';
@@ -38,7 +39,6 @@ require_once CANNA_PLUGIN_DIR . 'admin/class-canna-admin-menu.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-profile.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-product-metabox.php';
 require_once CANNA_PLUGIN_DIR . 'admin/class-canna-achievement-metabox.php';
-// REMOVED: require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-actions.php';
 
 // =============================================================================
 // 2. PLUGIN HOOKS
@@ -71,8 +71,6 @@ function canna_rewards_run() {
     Canna_Custom_Fields::init();
     Canna_Product_Metabox::init();
     new Canna_Achievement_Metabox(); // Initialize the new metabox class
-    Canna_Achievement_Handler::init(); // Initialize the achievement handler
-    // REMOVED: Canna_User_Actions::init();
 }
 add_action('plugins_loaded', 'canna_rewards_run');
 

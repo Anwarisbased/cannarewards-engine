@@ -1,9 +1,10 @@
 <?php
 /**
- * Handles the core gamification logic for CannaRewards achievements.
+ * Handles the final awarding logic for CannaRewards achievements.
  *
- * This class provides methods to award achievements to users and to check for
- * achievement eligibility based on various user actions (scanning, redeeming, profile updates).
+ * This class is responsible for the final database write when a user unlocks
+ * an achievement and for awarding any associated points. It is called by the
+ * Canna_Achievement_Engine after all rules and conditions have been met.
  *
  * @package CannaRewards
  * @subpackage Gamification
@@ -17,49 +18,20 @@ if (!defined('WPINC')) {
 class Canna_Achievement_Handler {
 
     /**
-     * Initializes the achievement handler.
-     */
-    public static function init() {
-        // This class is called statically from other event-driven methods.
-    }
-
-    /**
-     * Awards an achievement to a user if they don't already have it.
-     * This is the single, authoritative method for awarding an achievement.
+     * Awards an achievement to a user and grants points.
+     * This is the single, authoritative method for awarding an achievement. It assumes
+     * all prerequisite checks (e.g., if the user already has it) have been done by the engine.
      *
-     * @param int    $user_id         The ID of the user.
-     * @param string $achievement_key The unique key of the achievement to award.
-     * @return bool True if the achievement was awarded, false if already unlocked or not found/inactive.
+     * @param int    $user_id             The ID of the user.
+     * @param object $achievement_details An object containing the achievement data from the database.
+     * @return bool True if the achievement was awarded, false on failure.
      */
-    private static function award_achievement($user_id, $achievement_key) {
+    public static function award_achievement($user_id, $achievement_details) {
         global $wpdb;
         $user_achievements_table = $wpdb->prefix . 'canna_user_achievements';
-        $achievements_table      = $wpdb->prefix . 'canna_achievements';
 
-        // --- REFINEMENT: Check if the user already has this achievement first. It's a quick check. ---
-        $has_achievement = $wpdb->get_var(
-            $wpdb->prepare(
-                "SELECT id FROM `{$user_achievements_table}` WHERE user_id = %d AND achievement_key = %s LIMIT 1",
-                $user_id,
-                $achievement_key
-            )
-        );
-
-        if ($has_achievement) {
-            return false; // User already has this. Stop immediately.
-        }
-
-        // --- REFINEMENT: Get achievement details, but ONLY if it's active. ---
-        // This single query confirms the achievement exists and is ready to be awarded.
-        $achievement_details = $wpdb->get_row(
-            $wpdb->prepare(
-                "SELECT title, points_reward FROM `{$achievements_table}` WHERE achievement_key = %s AND is_active = 1",
-                $achievement_key
-            )
-        );
-
-        if (!$achievement_details) {
-            return false; // Achievement not found or is not active.
+        if (!isset($achievement_details->achievement_key)) {
+            return false;
         }
 
         // Award the achievement by inserting into the user's record.
@@ -67,7 +39,7 @@ class Canna_Achievement_Handler {
             $user_achievements_table,
             [
                 'user_id'         => $user_id,
-                'achievement_key' => $achievement_key,
+                'achievement_key' => $achievement_details->achievement_key,
                 'unlocked_at'     => current_time('mysql'),
             ],
             ['%d', '%s', '%s']
@@ -86,35 +58,5 @@ class Canna_Achievement_Handler {
         }
 
         return false;
-    }
-
-    /**
-     * Checks for and awards achievements when a user scans a product.
-     *
-     * @param int $user_id The ID of the user who scanned.
-     */
-    public static function check_on_scan($user_id) {
-        // Award 'first_scan' achievement.
-        self::award_achievement($user_id, 'first_scan');
-    }
-
-    /**
-     * Checks for and awards achievements when a user redeems a reward.
-     *
-     * @param int $user_id The ID of the user who redeemed.
-     */
-    public static function check_on_redeem($user_id) {
-        // Award 'first_redeem' achievement.
-        self::award_achievement($user_id, 'first_redeem');
-    }
-
-    /**
-     * Checks for and awards achievements when a user updates their profile.
-     *
-     * @param int   $user_id The ID of the user whose profile was updated.
-     * @param array $data    Optional: Array of updated user data.
-     */
-    public static function check_on_profile_update($user_id, $data = []) {
-        // Future profile-related achievement checks will go here.
     }
 }

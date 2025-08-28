@@ -265,8 +265,9 @@ function canna_sync_achievement_cpt_to_table($post_id) {
 
     // Retrieve data from the CPT and its custom fields.
     $post_title      = get_the_title($post_id);
-    $post_content    = get_post_field('post_content', $post_id); // Use post_content for description
+    $post_content    = get_post_field('post_content', $post_id);
     $achievement_key = get_post_meta($post_id, 'achievement_key', true);
+    $trigger_type    = get_post_meta($post_id, 'trigger_type', true); // <-- THE MISSING PIECE
     $type            = get_post_meta($post_id, 'type', true);
     $points_reward   = get_post_meta($post_id, 'points_reward', true);
     $rarity          = get_post_meta($post_id, 'rarity', true);
@@ -275,8 +276,6 @@ function canna_sync_achievement_cpt_to_table($post_id) {
 
     // Ensure achievement_key is present, it's our primary key in the custom table.
     if (empty($achievement_key)) {
-        // Optionally, log an error or set a default if key is missing.
-        // For now, we'll just return to prevent inserting invalid data.
         error_log('CannaRewards: Attempted to sync achievement without a key for Post ID: ' . $post_id);
         return;
     }
@@ -284,35 +283,24 @@ function canna_sync_achievement_cpt_to_table($post_id) {
     // Prepare data for insertion/update.
     $data = [
         'achievement_key' => $achievement_key,
+        'trigger_type'    => sanitize_text_field($trigger_type),
         'type'            => sanitize_text_field($type),
         'title'           => sanitize_text_field($post_title),
-        'description'     => wp_kses_post($post_content), // Sanitize content for description
+        'description'     => wp_kses_post($post_content),
         'points_reward'   => absint($points_reward),
         'rarity'          => sanitize_text_field($rarity),
         'icon_url'        => esc_url_raw($icon_url),
         'is_active'       => absint($is_active),
     ];
 
-    // Define format for data.
-    $format = [
-        '%s', // achievement_key
-        '%s', // type
-        '%s', // title
-        '%s', // description
-        '%d', // points_reward
-        '%s', // rarity
-        '%s', // icon_url
-        '%d', // is_active
-    ];
-
     // Perform INSERT ... ON DUPLICATE KEY UPDATE
-    // This handles both new insertions and updates to existing rows based on achievement_key.
     $wpdb->query(
         $wpdb->prepare(
             "INSERT INTO `{$table_name}`
-            (`achievement_key`, `type`, `title`, `description`, `points_reward`, `rarity`, `icon_url`, `is_active`)
-            VALUES (%s, %s, %s, %s, %d, %s, %s, %d)
+            (`achievement_key`, `trigger_type`, `type`, `title`, `description`, `points_reward`, `rarity`, `icon_url`, `is_active`)
+            VALUES (%s, %s, %s, %s, %s, %d, %s, %s, %d)
             ON DUPLICATE KEY UPDATE
+            `trigger_type` = VALUES(`trigger_type`),
             `type` = VALUES(`type`),
             `title` = VALUES(`title`),
             `description` = VALUES(`description`),
@@ -320,7 +308,7 @@ function canna_sync_achievement_cpt_to_table($post_id) {
             `rarity` = VALUES(`rarity`),
             `icon_url` = VALUES(`icon_url`),
             `is_active` = VALUES(`is_active`)",
-            $data['achievement_key'], $data['type'], $data['title'], $data['description'], $data['points_reward'], $data['rarity'], $data['icon_url'], $data['is_active'],
+            $data['achievement_key'], $data['trigger_type'], $data['type'], $data['title'], $data['description'], $data['points_reward'], $data['rarity'], $data['icon_url'], $data['is_active']
         )
     );
 }
