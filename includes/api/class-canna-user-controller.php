@@ -45,9 +45,11 @@ class Canna_User_Controller {
         $unlocked_keys_raw = $wpdb->get_results($wpdb->prepare("SELECT achievement_key FROM `{$user_achievements_table}` WHERE user_id = %d", $user_id));
         $unlocked_achievement_keys = wp_list_pluck($unlocked_keys_raw, 'achievement_key');
 
-        // === Onboarding & Wishlist Data ===
-        $onboarding_quest_step = (int) get_user_meta($user_id, '_onboarding_quest_step', true) ?: 1; // Default to step 1
+        // === TICKET #3 CHANGE: Onboarding & Wishlist Data ===
+        // Get the user's current step. If it doesn't exist, default to 1.
+        $onboarding_quest_step = (int) get_user_meta($user_id, '_onboarding_quest_step', true) ?: 1;
         $wishlist = get_user_meta($user_id, '_canna_wishlist', true) ?: [];
+        // --- END TICKET #3 CHANGE ---
 
         // === Settings & Theme Data ===
         $theme_options = [
@@ -112,7 +114,6 @@ class Canna_User_Controller {
             'referralCode' => get_user_meta($user_id, '_canna_referral_code', true),
             'shipping' => $shipping_meta,
             'date_of_birth' => get_user_meta($user_id, 'date_of_birth', true),
-            // --- NEW KEYS ---
             'allAchievements' => $all_achievements,
             'unlockedAchievementKeys' => $unlocked_achievement_keys,
             'onboardingQuestStep' => $onboarding_quest_step,
