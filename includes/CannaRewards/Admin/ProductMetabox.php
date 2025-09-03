@@ -1,70 +1,64 @@
 <?php
+namespace CannaRewards\Admin;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
 /**
  * Handles the custom metabox for CannaRewards product settings.
- *
- * @package CannaRewards
  */
+class ProductMetabox {
 
-if (!defined('WPINC')) { die; }
-
-class Canna_Product_Metabox {
-
-    /**
-     * Initializes the class by adding the necessary hooks.
-     */
     public static function init() {
         add_action('add_meta_boxes', [self::class, 'add_metabox']);
         add_action('save_post_product', [self::class, 'save_metabox_data']);
     }
 
-    /**
-     * Adds the metabox to the 'product' post type edit screen.
-     */
     public static function add_metabox() {
         add_meta_box(
-            'canna_product_settings_metabox',           // ID
-            'CannaRewards Product Settings',            // Title
-            [self::class, 'render_metabox_html'],       // Callback function
-            'product',                                  // Post type
-            'normal',                                   // Context
-            'high'                                      // Priority
+            'canna_product_settings_metabox',
+            'CannaRewards Product Settings',
+            [self::class, 'render_metabox_html'],
+            'product',
+            'normal',
+            'high'
         );
     }
 
-    /**
-     * Renders the HTML content for the metabox.
-     *
-     * @param WP_Post $post The current post object.
-     */
     public static function render_metabox_html($post) {
-        // Add a nonce field for security
         wp_nonce_field('canna_product_settings_save', 'canna_product_settings_nonce');
 
-        // Get existing values
+        $points_award = get_post_meta($post->ID, 'points_award', true);
         $points_cost = get_post_meta($post->ID, 'points_cost', true);
         $required_rank_slug = get_post_meta($post->ID, '_required_rank', true);
         $marketing_snippet = get_post_meta($post->ID, 'marketing_snippet', true);
 
-        // Get all available ranks for the dropdown
         $ranks = get_posts([
             'post_type' => 'canna_rank',
             'posts_per_page' => -1,
-            'orderby' => 'title',
+            'orderby' => 'meta_value_num',
+            'meta_key' => 'points_required',
             'order' => 'ASC',
         ]);
         ?>
         <table class="form-table">
             <tbody>
-                <!-- Points Cost Field -->
+                <tr>
+                    <th><label for="canna_points_award">Points Awarded (on scan)</label></th>
+                    <td>
+                        <input type="number" id="canna_points_award" name="canna_points_award" value="<?php echo esc_attr($points_award); ?>" class="short" />
+                        <p class="description">Enter the number of base points a user receives for scanning this product's QR code.</p>
+                    </td>
+                </tr>
                 <tr>
                     <th><label for="canna_points_cost">Points Cost (for redemption)</label></th>
                     <td>
                         <input type="number" id="canna_points_cost" name="canna_points_cost" value="<?php echo esc_attr($points_cost); ?>" class="short" />
-                        <p class="description">Enter the number of points required to redeem this item. Leave blank if this is a scannable (cannabis) product.</p>
+                        <p class="description">Enter the number of points required to redeem this item. Leave blank if this product cannot be redeemed.</p>
                     </td>
                 </tr>
-
-                <!-- Required Rank Field -->
                 <tr>
                     <th><label for="canna_required_rank">Required Rank (for redemption)</label></th>
                     <td>
@@ -79,8 +73,6 @@ class Canna_Product_Metabox {
                         <p class="description">Select the minimum rank a user must have to see and redeem this reward.</p>
                     </td>
                 </tr>
-
-                <!-- Marketing Snippet Field -->
                 <tr>
                     <th><label for="canna_marketing_snippet">Marketing Snippet</label></th>
                     <td>
@@ -93,47 +85,29 @@ class Canna_Product_Metabox {
         <?php
     }
 
-    /**
-     * Saves the custom meta data when a product is saved.
-     *
-     * @param int $post_id The ID of the post being saved.
-     */
     public static function save_metabox_data($post_id) {
-        // Check if our nonce is set.
-        if (!isset($_POST['canna_product_settings_nonce'])) {
+        if (!isset($_POST['canna_product_settings_nonce']) || !wp_verify_nonce($_POST['canna_product_settings_nonce'], 'canna_product_settings_save')) {
             return;
         }
-        // Verify that the nonce is valid.
-        if (!wp_verify_nonce($_POST['canna_product_settings_nonce'], 'canna_product_settings_save')) {
-            return;
-        }
-        // If this is an autosave, our form has not been submitted, so we don't want to do anything.
         if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
             return;
         }
-        // Check the user's permissions.
         if (!current_user_can('edit_post', $post_id)) {
             return;
         }
 
-        // --- Save our data ---
+        $fields_to_save = [
+            'canna_points_award' => 'points_award',
+            'canna_points_cost' => 'points_cost',
+            'canna_required_rank' => '_required_rank',
+            'canna_marketing_snippet' => 'marketing_snippet',
+        ];
 
-        // Points Cost
-        if (isset($_POST['canna_points_cost'])) {
-            $points_val = sanitize_text_field($_POST['canna_points_cost']);
-            update_post_meta($post_id, 'points_cost', $points_val === '' ? '' : absint($points_val));
-        }
-
-        // Required Rank
-        if (isset($_POST['canna_required_rank'])) {
-            $rank_val = sanitize_key($_POST['canna_required_rank']);
-            update_post_meta($post_id, '_required_rank', $rank_val);
-        }
-
-        // Marketing Snippet
-        if (isset($_POST['canna_marketing_snippet'])) {
-            $snippet_val = sanitize_textarea_field($_POST['canna_marketing_snippet']);
-            update_post_meta($post_id, 'marketing_snippet', $snippet_val);
+        foreach ($fields_to_save as $post_key => $meta_key) {
+            if (isset($_POST[$post_key])) {
+                $value = sanitize_text_field(wp_unslash($_POST[$post_key]));
+                update_post_meta($post_id, $meta_key, $value);
+            }
         }
     }
 }

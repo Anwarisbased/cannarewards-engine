@@ -1,12 +1,18 @@
 <?php
+namespace CannaRewards\Includes;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
 /**
  * Handles database-related functionality, like table creation on activation.
  */
-class Canna_DB {
+class DB {
 
     /**
-     * Plugin activation hook. Creates custom database tables.
-     * This method is called from the main plugin loader file.
+     * Plugin activation hook. Creates/Updates custom database tables.
      */
     public static function activate() {
         global $wpdb;
@@ -18,7 +24,6 @@ class Canna_DB {
         $sql = "CREATE TABLE $table_name (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             code varchar(100) NOT NULL,
-            points int(11) NOT NULL,
             sku varchar(100) DEFAULT '' NOT NULL,
             batch_id varchar(255) DEFAULT '' NOT NULL,
             is_used tinyint(1) DEFAULT 0 NOT NULL,
@@ -29,33 +34,22 @@ class Canna_DB {
         ) $charset_collate;";
         dbDelta($sql);
 
-        // Table for points transaction log
-        $log_table_name = $wpdb->prefix . 'canna_points_log';
-        $log_sql = "CREATE TABLE $log_table_name (
-            log_id bigint(20) NOT NULL AUTO_INCREMENT,
-            user_id bigint(20) NOT NULL,
-            points int(11) NOT NULL,
-            description varchar(255) NOT NULL,
-            log_date datetime DEFAULT '0000-00-00 00:00:00' NOT NULL,
-            PRIMARY KEY  (log_id),
-            KEY user_id (user_id)
-        ) $charset_collate;";
-        dbDelta($log_sql);
-
         // Table for achievements
         $achievements_table_name = $wpdb->prefix . 'canna_achievements';
         $achievements_sql = "CREATE TABLE `{$achievements_table_name}` (
             `achievement_key` varchar(100) NOT NULL,
-            `trigger_type` varchar(50) NOT NULL,
-            `type` varchar(50) NOT NULL,
+            `type` varchar(50) NOT NULL COMMENT 'Categorization for UI filtering',
             `title` varchar(255) NOT NULL,
             `description` text NOT NULL,
             `points_reward` int(11) DEFAULT 0 NOT NULL,
             `rarity` varchar(50) DEFAULT 'common' NOT NULL,
             `icon_url` varchar(255) DEFAULT '' NOT NULL,
             `is_active` tinyint(1) DEFAULT 1 NOT NULL,
+            `trigger_event` varchar(100) NOT NULL COMMENT 'e.g., product_scanned',
+            `trigger_count` int(11) NOT NULL DEFAULT 1,
+            `conditions` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'JSON-encoded array of conditions',
             PRIMARY KEY  (`achievement_key`),
-            KEY `trigger_type` (`trigger_type`)
+            KEY `trigger_event` (`trigger_event`)
         ) {$charset_collate};";
         dbDelta($achievements_sql);
 
@@ -77,7 +71,7 @@ class Canna_DB {
             `log_id` bigint(20) NOT NULL AUTO_INCREMENT,
             `user_id` bigint(20) unsigned NOT NULL,
             `action_type` varchar(50) NOT NULL,
-            `object_id` bigint(20) unsigned DEFAULT NULL,
+            `object_id` bigint(20) unsigned DEFAULT 0,
             `meta_data` longtext,
             `created_at` datetime NOT NULL,
             PRIMARY KEY (`log_id`),

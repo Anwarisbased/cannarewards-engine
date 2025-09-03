@@ -1,17 +1,18 @@
 <?php
+namespace CannaRewards\Admin;
+
+use WP_User;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
 /**
  * Handles custom fields on the WordPress User Profile screen.
- *
- * @package CannaRewards
  */
+class UserProfile {
 
-if (!defined('WPINC')) { die; }
-
-class Canna_User_Profile {
-
-    /**
-     * Initializes the class by adding hooks to display and save custom user profile fields.
-     */
     public static function init() {
         add_action('show_user_profile', [self::class, 'add_custom_fields']);
         add_action('edit_user_profile', [self::class, 'add_custom_fields']);
@@ -19,12 +20,7 @@ class Canna_User_Profile {
         add_action('edit_user_profile_update', [self::class, 'save_custom_fields']);
     }
 
-    /**
-     * Renders the HTML for the custom fields on the user profile page.
-     *
-     * @param WP_User $user The current user object.
-     */
-    public static function add_custom_fields($user) {
+    public static function add_custom_fields(WP_User $user) {
         ?>
         <h2>CannaRewards Custom Fields</h2>
         <table class="form-table" id="cannarewards-custom-fields">
@@ -71,22 +67,22 @@ class Canna_User_Profile {
         <?php
     }
 
-    /**
-     * Saves the custom user profile fields when the user profile is updated.
-     *
-     * @param int $user_id The ID of the user being updated.
-     */
     public static function save_custom_fields($user_id) {
         if (!current_user_can('edit_user', $user_id)) {
-            return false;
+            return;
         }
 
-        $meta_keys = [
-            'phone_number', 'shipping_first_name', 'shipping_last_name', 
-            'shipping_address_1', 'shipping_city', 'shipping_state', 'shipping_postcode'
+        $meta_to_save = [
+            'phone_number', 
+            'shipping_first_name', 
+            'shipping_last_name', 
+            'shipping_address_1', 
+            'shipping_city', 
+            'shipping_state', 
+            'shipping_postcode'
         ];
 
-        foreach ($meta_keys as $key) {
+        foreach ($meta_to_save as $key) {
             if (isset($_POST[$key])) {
                 update_user_meta($user_id, $key, sanitize_text_field($_POST[$key]));
             }

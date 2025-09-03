@@ -6,10 +6,18 @@ namespace Composer\Autoload;
 
 class ComposerStaticInita2d9fe3a3935209d616338e413db399c
 {
+    public static $files = array (
+        'cf2aac584fe174b7430ac43df1576abf' => __DIR__ . '/../..' . '/includes/CannaRewards/Includes/Event.php',
+    );
+
     public static $prefixLengthsPsr4 = array (
         'P' => 
         array (
             'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\' => 57,
+        ),
+        'C' => 
+        array (
+            'CannaRewards\\' => 13,
         ),
     );
 
@@ -18,10 +26,42 @@ class ComposerStaticInita2d9fe3a3935209d616338e413db399c
         array (
             0 => __DIR__ . '/..' . '/dealerdirect/phpcodesniffer-composer-installer/src',
         ),
+        'CannaRewards\\' => 
+        array (
+            0 => __DIR__ . '/../..' . '/includes/CannaRewards',
+        ),
     );
 
     public static $classMap = array (
+        'CannaRewards\\Admin\\AchievementMetabox' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/AchievementMetabox.php',
+        'CannaRewards\\Admin\\AdminMenu' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/AdminMenu.php',
+        'CannaRewards\\Admin\\CustomFieldMetabox' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/CustomFieldMetabox.php',
+        'CannaRewards\\Admin\\ProductMetabox' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/ProductMetabox.php',
+        'CannaRewards\\Admin\\TriggerMetabox' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/TriggerMetabox.php',
+        'CannaRewards\\Admin\\UserProfile' => __DIR__ . '/../..' . '/includes/CannaRewards/Admin/UserProfile.php',
+        'CannaRewards\\Api\\AdminController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/AdminController.php',
+        'CannaRewards\\Api\\AuthController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/AuthController.php',
+        'CannaRewards\\Api\\ClaimController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/ClaimController.php',
+        'CannaRewards\\Api\\HistoryController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/HistoryController.php',
+        'CannaRewards\\Api\\OrdersController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/OrdersController.php',
+        'CannaRewards\\Api\\PageController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/PageController.php',
+        'CannaRewards\\Api\\ProfileController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/ProfileController.php',
+        'CannaRewards\\Api\\RedeemController' => __DIR__ . '/../..' . '/includes/CannaRewards/Api/RedeemController.php',
+        'CannaRewards\\CannaRewardsEngine' => __DIR__ . '/../..' . '/includes/CannaRewards/CannaRewardsEngine.php',
+        'CannaRewards\\Includes\\DB' => __DIR__ . '/../..' . '/includes/CannaRewards/Includes/DB.php',
+        'CannaRewards\\Includes\\Event' => __DIR__ . '/../..' . '/includes/CannaRewards/Includes/Event.php',
+        'CannaRewards\\Includes\\Integrations' => __DIR__ . '/../..' . '/includes/CannaRewards/Includes/Integrations.php',
+        'CannaRewards\\Services\\ActionLogService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/ActionLogService.php',
+        'CannaRewards\\Services\\CDPService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/CDPService.php',
+        'CannaRewards\\Services\\ConfigService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/ConfigService.php',
+        'CannaRewards\\Services\\ContentService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/ContentService.php',
+        'CannaRewards\\Services\\ContextBuilderService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/ContextBuilderService.php',
+        'CannaRewards\\Services\\EconomyService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/EconomyService.php',
+        'CannaRewards\\Services\\GamificationService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/GamificationService.php',
+        'CannaRewards\\Services\\ReferralService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/ReferralService.php',
+        'CannaRewards\\Services\\UserService' => __DIR__ . '/../..' . '/includes/CannaRewards/Services/UserService.php',
         'Composer\\InstalledVersions' => __DIR__ . '/..' . '/composer/InstalledVersions.php',
+        'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\Plugin' => __DIR__ . '/..' . '/dealerdirect/phpcodesniffer-composer-installer/src/Plugin.php',
         'PHPCSUtils\\AbstractSniffs\\AbstractArrayDeclarationSniff' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/AbstractSniffs/AbstractArrayDeclarationSniff.php',
         'PHPCSUtils\\BackCompat\\BCFile' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCFile.php',
         'PHPCSUtils\\BackCompat\\BCTokens' => __DIR__ . '/..' . '/phpcsstandards/phpcsutils/PHPCSUtils/BackCompat/BCTokens.php',

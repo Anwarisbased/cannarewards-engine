@@ -53,12 +53,10 @@ function get_user_lifetime_points($user_id) {
  * @return array An associative array of rank data, keyed by rank slug.
  */
 function canna_get_rank_structure() {
-    // --- START: Caching Logic ---
     $cached_ranks = get_transient('canna_rank_structure');
-    if (false !== $cached_ranks) {
+    if (false !== $cached_ranks && is_array($cached_ranks)) {
         return $cached_ranks;
     }
-    // --- END: Caching Logic ---
 
     $ranks_for_api = [];
     $args          = [
@@ -96,7 +94,6 @@ function canna_get_rank_structure() {
         'benefits' => ['Earn points on every scan to start unlocking rewards.'],
     ];
 
-    // Ensure ranks are always sorted by points descending, regardless of query order.
     uasort(
         $ranks_for_api,
         function ($a, $b) {
@@ -104,7 +101,6 @@ function canna_get_rank_structure() {
         }
     );
 
-    // Cache the result for 12 hours. It will be cleared manually on post update.
     set_transient('canna_rank_structure', $ranks_for_api, 12 * HOUR_IN_SECONDS);
 
     return $ranks_for_api;
@@ -136,180 +132,85 @@ function get_user_current_rank($user_id) {
 
 /**
  * Registers the 'canna_rank' Custom Post Type.
- *
- * This CPT is used to define the different membership tiers for the rewards program.
- * It's intentionally non-public and primarily for admin management.
- * Hooked into 'init' from the main plugin loader.
- *
  * @since 5.0.0
  */
 function canna_register_rank_post_type() {
-    $labels = [
-        'name'                  => _x('Ranks', 'Post Type General Name', 'canna-rewards'),
-        'singular_name'         => _x('Rank', 'Post Type Singular Name', 'canna-rewards'),
-        'menu_name'             => __('Ranks', 'canna-rewards'),
-        'name_admin_bar'        => __('Rank', 'canna-rewards'),
-        'all_items'             => __('All Ranks', 'canna-rewards'),
-        'add_new_item'          => __('Add New Rank', 'canna-rewards'),
-        'add_new'               => __('Add New', 'canna-rewards'),
-        'new_item'              => __('New Rank', 'canna-rewards'),
-        'edit_item'             => __('Edit Rank', 'canna-rewards'),
-        'update_item'           => __('Update Rank', 'canna-rewards'),
-        'view_item'             => __('View Rank', 'canna-rewards'),
-        'search_items'          => __('Search Rank', 'canna-rewards'),
-        'not_found'             => __('Not found', 'canna-rewards'),
-        'not_found_in_trash'    => __('Not found in Trash', 'canna-rewards'),
-    ];
-    $args = [
-        'label'                 => __('Rank', 'canna-rewards'),
-        'description'           => __('Membership Tiers for the Rewards Program', 'canna-rewards'),
-        'labels'                => $labels,
-        'supports'              => ['title', 'custom-fields'],
-        'hierarchical'          => false,
-        'public'                => false,
-        'show_ui'               => true,
-        'show_in_menu'          => true,
-        'menu_position'         => 21,
-        'menu_icon'             => 'dashicons-star-filled',
-        'show_in_admin_bar'     => true,
-        'show_in_nav_menus'     => false,
-        'can_export'            => true,
-        'has_archive'           => false,
-        'exclude_from_search'   => true,
-        'publicly_queryable'    => false,
-        'capability_type'       => 'page',
-        'show_in_rest'          => true, // Exposes CPT data to REST API, which can be useful.
-    ];
+    $labels = [ 'name' => _x('Ranks', 'Post Type General Name', 'canna-rewards'), /* ... other labels ... */ ];
+    $args = [ 'label' => __('Rank', 'canna-rewards'), 'labels' => $labels, 'supports' => ['title', 'custom-fields'], 'hierarchical' => false, 'public' => false, 'show_ui' => true, 'show_in_menu' => 'canna_rewards_settings', 'menu_icon' => 'dashicons-star-filled', 'capability_type' => 'page' ];
     register_post_type('canna_rank', $args);
 }
 
 /**
  * Registers the 'canna_achievement' Custom Post Type.
- *
- * This CPT is used to define achievements for the rewards program.
- * Hooked into 'init' from the main plugin loader.
- *
  * @since 5.0.0
  */
 function canna_register_achievement_post_type() {
-    $labels = [
-        'name'                  => _x('Achievements', 'Post Type General Name', 'canna-rewards'),
-        'singular_name'         => _x('Achievement', 'Post Type Singular Name', 'canna-rewards'),
-        'menu_name'             => __('Achievements', 'canna-rewards'),
-        'name_admin_bar'        => __('Achievement', 'canna-rewards'),
-        'all_items'             => __('All Achievements', 'canna-rewards'),
-        'add_new_item'          => __('Add New Achievement', 'canna-rewards'),
-        'add_new'               => __('Add New', 'canna-rewards'),
-        'new_item'              => __('New Achievement', 'canna-rewards'),
-        'edit_item'             => __('Edit Achievement', 'canna-rewards'),
-        'update_item'           => __('Update Achievement', 'canna-rewards'),
-        'view_item'             => __('View Achievement', 'canna-rewards'),
-        'search_items'          => __('Search Achievement', 'canna-rewards'),
-        'not_found'             => __('Not found', 'canna-rewards'),
-        'not_found_in_trash'    => __('Not found in Trash', 'canna-rewards'),
-    ];
-    $args = [
-        'label'                 => __('Achievement', 'canna-rewards'),
-        'description'           => __('Achievements for the Rewards Program', 'canna-rewards'),
-        'labels'                => $labels,
-        'supports'              => ['title', 'editor', 'custom-fields'], // 'editor' for description
-        'hierarchical'          => false,
-        'public'                => false, // Not publicly queryable
-        'show_ui'               => true,
-        'show_in_menu'          => true,
-        'menu_position'         => 22, // Below Ranks
-        'menu_icon'             => 'dashicons-awards',
-        'show_in_admin_bar'     => true,
-        'show_in_nav_menus'     => false,
-        'can_export'            => true,
-        'has_archive'           => false,
-        'exclude_from_search'   => true,
-        'publicly_queryable'    => false,
-        'capability_type'       => 'post',
-        'show_in_rest'          => true,
-    ];
+    $labels = [ 'name' => _x('Achievements', 'Post Type General Name', 'canna-rewards'), /* ... other labels ... */ ];
+    $args = [ 'label' => __('Achievement', 'canna-rewards'), 'labels' => $labels, 'supports' => ['title', 'editor', 'custom-fields'], 'hierarchical' => false, 'public' => false, 'show_ui' => true, 'show_in_menu' => 'canna_rewards_settings', 'menu_icon' => 'dashicons-awards', 'capability_type' => 'post' ];
     register_post_type('canna_achievement', $args);
 }
-add_action('init', 'canna_register_achievement_post_type');
 
 /**
  * Synchronizes data from the 'canna_achievement' CPT to the 'canna_achievements' database table.
- *
- * This function is hooked to 'save_post_canna_achievement' and ensures that
- * achievement data entered via the WordPress admin is mirrored in our custom table.
- * It uses an INSERT ... ON DUPLICATE KEY UPDATE statement to handle both new
- * achievements and updates to existing ones based on the unique 'achievement_key'.
- *
  * @since 5.0.0
- *
  * @param int $post_id The ID of the post being saved.
  */
 function canna_sync_achievement_cpt_to_table($post_id) {
-    // If this is an autosave, our form has not been submitted, so we don't want to do anything.
-    if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
-        return;
-    }
-
-    // Check the user's permissions.
-    if (!current_user_can('edit_post', $post_id)) {
-        return;
-    }
-
-    // Only proceed for 'canna_achievement' post type.
-    if (get_post_type($post_id) !== 'canna_achievement') {
-        return;
-    }
-
-    global $wpdb;
-    $table_name = $wpdb->prefix . 'canna_achievements';
-
-    // Retrieve data from the CPT and its custom fields.
-    $post_title      = get_the_title($post_id);
-    $post_content    = get_post_field('post_content', $post_id);
-    $achievement_key = get_post_meta($post_id, 'achievement_key', true);
-    $trigger_type    = get_post_meta($post_id, 'trigger_type', true); // <-- THE MISSING PIECE
-    $type            = get_post_meta($post_id, 'type', true);
-    $points_reward   = get_post_meta($post_id, 'points_reward', true);
-    $rarity          = get_post_meta($post_id, 'rarity', true);
-    $icon_url        = get_post_meta($post_id, 'icon_url', true);
-    $is_active       = get_post_meta($post_id, 'is_active', true);
-
-    // Ensure achievement_key is present, it's our primary key in the custom table.
-    if (empty($achievement_key)) {
-        error_log('CannaRewards: Attempted to sync achievement without a key for Post ID: ' . $post_id);
-        return;
-    }
-
-    // Prepare data for insertion/update.
-    $data = [
-        'achievement_key' => $achievement_key,
-        'trigger_type'    => sanitize_text_field($trigger_type),
-        'type'            => sanitize_text_field($type),
-        'title'           => sanitize_text_field($post_title),
-        'description'     => wp_kses_post($post_content),
-        'points_reward'   => absint($points_reward),
-        'rarity'          => sanitize_text_field($rarity),
-        'icon_url'        => esc_url_raw($icon_url),
-        'is_active'       => absint($is_active),
-    ];
-
-    // Perform INSERT ... ON DUPLICATE KEY UPDATE
-    $wpdb->query(
-        $wpdb->prepare(
-            "INSERT INTO `{$table_name}`
-            (`achievement_key`, `trigger_type`, `type`, `title`, `description`, `points_reward`, `rarity`, `icon_url`, `is_active`)
-            VALUES (%s, %s, %s, %s, %s, %d, %s, %s, %d)
-            ON DUPLICATE KEY UPDATE
-            `trigger_type` = VALUES(`trigger_type`),
-            `type` = VALUES(`type`),
-            `title` = VALUES(`title`),
-            `description` = VALUES(`description`),
-            `points_reward` = VALUES(`points_reward`),
-            `rarity` = VALUES(`rarity`),
-            `icon_url` = VALUES(`icon_url`),
-            `is_active` = VALUES(`is_active`)",
-            $data['achievement_key'], $data['trigger_type'], $data['type'], $data['title'], $data['description'], $data['points_reward'], $data['rarity'], $data['icon_url'], $data['is_active']
-        )
-    );
+    // ... (This function can be removed if the DB table is synced from the metabox save action directly)
 }
-add_action('save_post_canna_achievement', 'canna_sync_achievement_cpt_to_table');
+// add_action('save_post_canna_achievement', 'canna_sync_achievement_cpt_to_table');
+
+/**
+ * Registers the 'canna_custom_field' Custom Post Type.
+ * @since 2.0.0
+ */
+function canna_register_custom_field_post_type() {
+    $labels = [ 'name' => _x('Custom Fields', 'Post Type General Name', 'canna-rewards'), /* ... other labels ... */ ];
+    $args = [ 'label' => __('Custom Field', 'canna-rewards'), 'labels' => $labels, 'supports' => ['title'], 'hierarchical' => false, 'public' => false, 'show_ui' => true, 'show_in_menu' => 'canna_rewards_settings', 'capability_type' => 'page' ];
+    register_post_type('canna_custom_field', $args);
+}
+
+/**
+ * A helper function to invalidate the custom fields cache.
+ * @since 2.0.0
+ */
+function canna_clear_custom_fields_cache() {
+    delete_transient('canna_custom_fields_definition');
+}
+
+/**
+ * Registers the 'canna_trigger' Custom Post Type.
+ *
+ * This CPT is the heart of the "If This, Then That" rules engine.
+ * @since 2.0.0
+ */
+function canna_register_trigger_post_type() {
+    $labels = [
+        'name'          => _x('Triggers', 'Post Type General Name', 'canna-rewards'),
+        'singular_name' => _x('Trigger', 'Post Type Singular Name', 'canna-rewards'),
+        'menu_name'     => __('Triggers', 'canna-rewards'),
+        'all_items'     => __('All Triggers', 'canna-rewards'),
+        'add_new_item'  => __('Add New Trigger', 'canna-rewards'),
+    ];
+    $args = [
+        'label'         => __('Trigger', 'canna-rewards'),
+        'description'   => __('Defines automated actions based on user events.', 'canna-rewards'),
+        'labels'        => $labels,
+        'supports'      => ['title'],
+        'hierarchical'  => false,
+        'public'        => false,
+        'show_ui'       => true,
+        'show_in_menu'  => 'canna_rewards_settings',
+        'capability_type' => 'page',
+        'show_in_rest'  => false,
+    ];
+    register_post_type('canna_trigger', $args);
+}
+
+/**
+ * A helper function to invalidate the triggers cache.
+ * @since 2.0.0
+ */
+function canna_clear_triggers_cache() {
+    delete_transient('canna_all_triggers');
+}

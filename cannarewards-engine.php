@@ -3,68 +3,41 @@
  * Plugin Name:       CannaRewards Engine
  * Plugin URI:        https://yourwebsite.com/
  * Description:       The all-in-one, self-reliant engine for the CannaRewards PWA.
- * Version:           5.1.0
- * Author:            Your Name
+ * Version:           2.0.0
+ * Author:            Anwar Isbased
  * Author URI:        https://yourwebsite.com/
  * Text Domain:       canna-rewards
  *
  * @package CannaRewards
  */
 
-// Exit if accessed directly to prevent security vulnerabilities.
+// Exit if accessed directly.
 if (!defined('WPINC')) {
     die;
 }
 
-// Define plugin constants for easy and reliable access to paths and files.
-define('CANNA_PLUGIN_FILE', __FILE__);
+// Define plugin constants.
 define('CANNA_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('CANNA_PLUGIN_VERSION', '5.1.0');
+define('CANNA_PLUGIN_FILE', __FILE__);
 
-// =============================================================================
-// 1. INCLUDE PLUGIN FILES
-// =============================================================================
+// 1. Include the Composer Autoloader. This replaces all the old manual require statements.
+// It will automatically find and load all our namespaced classes on demand.
+require_once CANNA_PLUGIN_DIR . 'vendor/autoload.php';
 
+// 2. Include the procedural functions file that doesn't have a class.
+// This is the only manual include we need for our own code.
 require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-db.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-points-handler.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-achievement-handler.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-api-manager.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-integrations.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-custom-fields.php';
-require_once CANNA_PLUGIN_DIR . 'includes/class-canna-cdp-handler.php'; // This was added in the sprint
 
-require_once CANNA_PLUGIN_DIR . 'admin/class-canna-admin-menu.php';
-require_once CANNA_PLUGIN_DIR . 'admin/class-canna-user-profile.php';
-require_once CANNA_PLUGIN_DIR . 'admin/class-canna-product-metabox.php';
-require_once CANNA_PLUGIN_DIR . 'admin/class-canna-achievement-metabox.php';
+// 3. Use our root namespace for the main engine class.
+use CannaRewards\CannaRewardsEngine;
 
-// =============================================================================
-// 2. PLUGIN HOOKS
-// =============================================================================
-
-register_activation_hook(CANNA_PLUGIN_FILE, ['Canna_DB', 'activate']);
-
-// =============================================================================
-// 3. PLUGIN INITIALIZATION
-// =============================================================================
-
-function canna_rewards_run() {
-    add_action('init', 'canna_register_rank_post_type', 0);
-    add_action('init', 'canna_register_achievement_post_type', 0);
-
-    Canna_API_Manager::init();
-    Canna_Admin_Menu::init();
-    Canna_User_Profile::init();
-    Canna_Integrations::init();
-    Canna_Custom_Fields::init();
-    Canna_Product_Metabox::init();
-    new Canna_Achievement_Metabox();
+/**
+ * The main function for returning the CannaRewardsEngine instance.
+ * It ensures the plugin is a singleton, meaning it only runs once.
+ */
+function CannaRewards() {
+    return CannaRewardsEngine::instance();
 }
-add_action('plugins_loaded', 'canna_rewards_run');
 
-function canna_clear_rank_cache() {
-    delete_transient('canna_rank_structure');
-}
-add_action('save_post_canna_rank', 'canna_clear_rank_cache');
-add_action('delete_post', 'canna_clear_rank_cache');
+// Get the plugin running.
+CannaRewards();
