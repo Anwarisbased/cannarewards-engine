@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Includes\Event;
+use WP_Error;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -9,7 +12,7 @@ if ( ! defined( 'WPINC' ) ) {
 /**
  * User Service
  *
- * Handles all business logic related to fetching and updating user profiles and data.
+ * Handles all business logic related to fetching, creating, and updating user profiles and data.
  */
 class UserService {
     private $cdp_service;
@@ -18,6 +21,74 @@ class UserService {
     public function __construct() {
         $this->cdp_service        = new CDPService();
         $this->action_log_service = new ActionLogService();
+    }
+
+    /**
+     * Creates a new user, generates their referral code, and fires necessary events.
+     * This is the single source of truth for user registration logic.
+     *
+     * @param array $user_data The registration data from the API request.
+     * @return array The result of the registration.
+     * @throws \Exception If registration fails, with a code indicating the error type.
+     */
+    public function create_user( array $user_data ): array {
+        if (!get_option('users_can_register')) {
+            // Use 503 Service Unavailable for disabled registration.
+            throw new \Exception('User registration is currently disabled.', 503);
+        }
+
+        $email = sanitize_email($user_data['email'] ?? '');
+        $password = $user_data['password'] ?? '';
+        $first_name = sanitize_text_field($user_data['firstName'] ?? '');
+
+        if (empty($email) || empty($password) || !is_email($email)) {
+            throw new \Exception('A valid email and password are required.', 400);
+        }
+        if (email_exists($email)) {
+            // Use code 1 for "conflict" type errors.
+            throw new \Exception('An account with that email already exists.', 409);
+        }
+
+        $user_id = wp_insert_user([
+            'user_login' => $email,
+            'user_email' => $email,
+            'user_pass'  => $password,
+            'first_name' => $first_name,
+            'last_name'  => sanitize_text_field($user_data['lastName'] ?? ''),
+            'role'       => 'subscriber'
+        ]);
+
+        if (is_wp_error($user_id)) {
+            throw new \Exception($user_id->get_error_message(), 500);
+        }
+
+        // --- Post-registration side-effects ---
+        update_user_meta($user_id, 'phone_number', sanitize_text_field($user_data['phone'] ?? ''));
+        update_user_meta($user_id, 'marketing_consent', !empty($user_data['agreedToMarketing']));
+        update_user_meta($user_id, '_age_gate_confirmed_at', current_time('mysql', 1));
+        
+        // Generate a referral code for the new user.
+        $referral_service = new ReferralService();
+        $referral_service->generate_code_for_new_user($user_id, $first_name);
+
+        $referral_code = sanitize_text_field($user_data['referralCode'] ?? null);
+        
+        // Broadcast the 'user_created' event for other services to listen to (e.g., ReferralService).
+        Event::broadcast('user_created', [
+            'user_id'       => $user_id,
+            'referral_code' => $referral_code
+        ]);
+        
+        $this->cdp_service->track($user_id, 'user_created', [
+             'signup_method'      => 'password',
+             'referral_code_used' => $referral_code
+        ]);
+
+        return [
+            'success' => true,
+            'message' => 'Registration successful. Please log in.',
+            'userId' => $user_id
+        ];
     }
 
     /**

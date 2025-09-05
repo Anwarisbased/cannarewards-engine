@@ -24,7 +24,10 @@ class ClaimController {
     }
 
     /**
-     * The main callback for the POST /actions/claim endpoint.
+     * The main callback for the POST /v2/actions/claim endpoint.
+     *
+     * @param WP_REST_Request $request The incoming API request.
+     * @return WP_REST_Response|WP_Error The API response.
      */
     public function process_claim( WP_REST_Request $request ) {
         $user_id       = get_current_user_id();
@@ -38,15 +41,13 @@ class ClaimController {
             // DELEGATE EVERYTHING to the service. The controller does no thinking.
             $result = $this->economy_service->process_scan( $user_id, $code_to_claim );
             
-            // In the future, we could get unlocked achievements back from the event broadcast
-            // and merge them into the final response here.
-            $result['triggered_events'] = []; 
-
+            // The service now returns a rich response payload that includes any triggered events.
             return new WP_REST_Response( $result, 200 );
 
         } catch ( Exception $e ) {
             // Catch any errors from the service and format them for the API.
-            return new WP_Error( 'claim_failed', $e->getMessage(), [ 'status' => 400 ] );
+            // A 409 Conflict is more appropriate for an invalid/used code.
+            return new WP_Error( 'claim_failed', $e->getMessage(), [ 'status' => 409 ] );
         }
     }
 }

@@ -12,7 +12,7 @@ if ( ! defined( 'WPINC' ) ) {
  * Referral Service
  *
  * Handles business logic related to referrals, such as code generation and processing signups.
- * This service is now event-driven and configurable via Triggers.
+ * This service is event-driven and configurable via Triggers.
  */
 class ReferralService {
 
@@ -41,7 +41,6 @@ class ReferralService {
             $referrer_user_id = $referring_users[0];
             update_user_meta( $user_id, '_canna_referred_by_user_id', $referrer_user_id );
             
-            // Execute any triggers configured for this event (e.g., grant points to the new user).
             $this->execute_triggers('referral_invitee_signed_up', $user_id, ['referrer_id' => $referrer_user_id]);
         }
     }
@@ -51,17 +50,15 @@ class ReferralService {
      */
     public function handle_referral_conversion( array $payload ) {
         global $wpdb;
-        $user_id = $payload['user_id'] ?? 0;
+        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
         if (empty($user_id)) { return; }
 
-        // The action log is the source of truth. A count of 1 means this is the first scan.
-        $scan_count = (int) $wpdb->get_var( $wpdb->prepare( "SELECT COUNT(log_id) FROM {$wpdb->prefix}canna_user_action_log WHERE user_id = %d AND action_type = 'scan'", $user_id ) );
+        $scan_count = $payload['user_snapshot']['engagement']['total_scans'] ?? 1;
         
         if ( 1 === $scan_count ) {
             $referrer_user_id = (int) get_user_meta( $user_id, '_canna_referred_by_user_id', true );
             
             if ( $referrer_user_id > 0 ) {
-                // This is a conversion! Execute triggers for the REFERRER.
                 $this->execute_triggers('referral_converted', $referrer_user_id, ['invitee_id' => $user_id]);
             }
         }
@@ -69,10 +66,6 @@ class ReferralService {
     
     /**
      * Finds and executes all active Triggers for a given event key.
-     *
-     * @param string $event_key The event to find triggers for.
-     * @param int    $user_id The ID of the user to apply the action to.
-     * @param array  $context Additional context for logging.
      */
     private function execute_triggers(string $event_key, int $user_id, array $context = []) {
         $triggers_to_run = get_posts([
@@ -99,7 +92,6 @@ class ReferralService {
                     $economy_service->grant_points($user_id, $points_to_grant, $trigger_post->post_title);
                 }
             }
-            // Future actions like 'grant_product' would be added here.
         }
 
         $cdp_service->track($user_id, $event_key, $context);
@@ -119,5 +111,59 @@ class ReferralService {
         } while ( ! is_null( $exists ) );
         update_user_meta( $user_id, '_canna_referral_code', $new_code );
         return $new_code;
+    }
+
+    /**
+     * Retrieves a formatted list of users referred by a specific user.
+     */
+    public function get_user_referrals( int $referrer_id ): array {
+        global $wpdb;
+        $results = [];
+        $invitees = get_users([
+            'meta_key' => '_canna_referred_by_user_id',
+            'meta_value' => $referrer_id,
+            'orderby' => 'user_registered',
+            'order' => 'DESC',
+        ]);
+
+        if (empty($invitees)) {
+            return $results;
+        }
+
+        $scan_log_table = $wpdb->prefix . 'canna_user_action_log';
+
+        foreach ($invitees as $invitee) {
+            $first_scan_exists = (bool) $wpdb->get_var($wpdb->prepare(
+                "SELECT log_id FROM {$scan_log_table} WHERE user_id = %d AND action_type = 'scan' LIMIT 1",
+                $invitee->ID
+            ));
+
+            $results[] = [
+                'name' => $invitee->first_name ?: $invitee->display_name,
+                'email' => $invitee->user_email,
+                'join_date' => date('F j, Y', strtotime($invitee->user_registered)),
+                'status_key' => $first_scan_exists ? 'awarded' : 'pending',
+                'status' => $first_scan_exists ? 'Awarded' : 'Pending First Scan',
+            ];
+        }
+        return $results;
+    }
+
+    /**
+     * Generates pre-composed "nudge" messages for a pending referee.
+     */
+    public function get_nudge_options_for_referee( int $referrer_id, string $referee_email ): array {
+        $referee = get_user_by('email', $referee_email);
+
+        if (!$referee || (int) get_user_meta($referee->ID, '_canna_referred_by_user_id', true) !== $referrer_id) {
+            throw new \Exception("You do not have permission to nudge this user.");
+        }
+        
+        return [
+            'share_options' => [
+                "Hey! Just a friendly reminder to complete your first scan with CannaRewards to unlock your welcome gift!",
+                "Don't forget to scan a product to get your CannaRewards welcome bonus! Let me know if you have any questions.",
+            ]
+        ];
     }
 }
