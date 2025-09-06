@@ -12,89 +12,43 @@ if ( ! defined( 'WPINC' ) ) {
 class Integrations {
 
     public static function init() {
-        // This is the new, critical part. It runs very early to catch pre-flight requests.
-        add_action('init', [self::class, 'handle_preflight_requests']);
-
-        // This part adds the headers to the actual API responses (GET, POST, etc.).
-        add_action('rest_api_init', [self::class, 'add_cors_headers_to_api_response'], 15);
-
-        // Add a fallback for WooCommerce REST API authentication.
-        add_filter('woocommerce_rest_check_authentication', [self::class, 'wc_rest_auth_fallback'], 20, 2);
+        // This is the most important part. We add the headers directly.
+        add_action('init', [self::class, 'handle_preflight_and_cors_headers']);
         
-        // Loosen WooCommerce product read permissions for logged-in users.
-        add_filter('woocommerce_rest_check_permissions', [self::class, 'wc_rest_product_permissions'], 99, 4);
-    }
-    
-    private static function get_allowed_origins(): array {
-        // Define your allowed frontend origins here.
-        return ['http://localhost:3000', 'https://cannarewards-pwa.vercel.app'];
-    }
-
-    /**
-     * Handles the CORS pre-flight OPTIONS request.
-     * This must run early to prevent WordPress from trying to process it as a REST route.
-     */
-    public static function handle_preflight_requests() {
-        if ('OPTIONS' === $_SERVER['REQUEST_METHOD']) {
-            $origin = get_http_origin();
-            $allowed_origins = self::get_allowed_origins();
-
-            if ($origin && in_array($origin, $allowed_origins, true)) {
-                header('Access-Control-Allow-Origin: ' . esc_url_raw($origin));
-                header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-                header('Access-Control-Allow-Headers: Content-Type, Authorization, X-WP-Nonce');
-                header('Access-Control-Allow-Credentials: true');
-                status_header(200);
-                // Exit immediately to prevent WordPress from continuing to process the request.
-                exit();
-            }
-        }
-    }
-
-    /**
-     * Adds CORS headers to actual API requests (GET, POST, etc.).
-     */
-    public static function add_cors_headers_to_api_response() {
-        // Remove the default WordPress CORS handler to avoid conflicts.
+        // Remove default WordPress handlers to avoid conflicts.
         remove_filter('rest_pre_serve_request', 'rest_send_cors_headers');
-        
-        // Add our custom handler.
         add_filter('rest_pre_serve_request', function ($value) {
-            $allowed_origins = self::get_allowed_origins();
-            $origin = get_http_origin();
-            
-            if ($origin && in_array($origin, $allowed_origins, true)) {
-                header('Access-Control-Allow-Origin: ' . esc_url_raw($origin));
-                header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-                header('Access-Control-Allow-Headers: Content-Type, Authorization, X-WP-Nonce');
-                header('Access-Control-Allow-Credentials: true');
-            }
-            
+            self::add_cors_headers();
             return $value;
         });
     }
 
-    public static function wc_rest_auth_fallback($user, $result) {
-        if (is_wp_error($result) && !empty($_SERVER['HTTP_AUTHORIZATION'])) {
-            list($type, $auth) = explode(' ', $_SERVER['HTTP_AUTHORIZATION']);
-            if (strtolower($type) === 'basic' && class_exists('WC_REST_Authentication')) {
-                // @codingStandardsIgnoreStart
-                list($username, $password) = explode(':', base64_decode($auth));
-                // @codingStandardsIgnoreEnd
-                $api_keys_class = new \WC_REST_Authentication();
-                $user_id = $api_keys_class->perform_basic_authentication($username, $password);
-                if ($user_id) {
-                    return $user_id;
-                }
-            }
+    /**
+     * Central function to add all required CORS headers.
+     */
+    private static function add_cors_headers() {
+        $origin = get_http_origin();
+        $allowed_origins = ['http://localhost:3000', 'https://cannarewards-pwa.vercel.app'];
+
+        if ($origin && in_array($origin, $allowed_origins, true)) {
+            header('Access-Control-Allow-Origin: ' . esc_url_raw($origin));
+            header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-WP-Nonce');
+            header('Access-Control-Allow-Credentials: true');
         }
-        return $user;
     }
 
-    public static function wc_rest_product_permissions($permission, $context, $object_id, $post_type) {
-        if ($context === 'read' && $post_type === 'product' && is_user_logged_in()) {
-            return true;
+    /**
+     * Handles the pre-flight OPTIONS request aggressively.
+     */
+    public static function handle_preflight_and_cors_headers() {
+        // Always add headers on every request.
+        self::add_cors_headers();
+
+        // If it's a pre-flight request, kill the script after sending headers.
+        if ('OPTIONS' === $_SERVER['REQUEST_METHOD']) {
+            status_header(204); // 204 No Content is appropriate for pre-flight
+            exit();
         }
-        return $permission;
     }
 }

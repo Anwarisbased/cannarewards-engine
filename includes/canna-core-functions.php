@@ -214,3 +214,36 @@ function canna_register_trigger_post_type() {
 function canna_clear_triggers_cache() {
     delete_transient('canna_all_triggers');
 }
+
+/**
+ * Retrieves all custom field definitions, with caching.
+ * @since 2.1.0
+ */
+function canna_get_custom_fields_definitions(): array {
+    $cached_fields = get_transient('canna_custom_fields_definition');
+    if (is_array($cached_fields)) {
+        return $cached_fields;
+    }
+
+    $fields = [];
+    $args = [
+        'post_type'      => 'canna_custom_field',
+        'posts_per_page' => -1,
+        'post_status'    => 'publish',
+    ];
+    $field_posts = get_posts($args);
+
+    foreach ($field_posts as $post) {
+        $options_raw = get_post_meta($post->ID, 'options', true);
+        $fields[] = [
+            'key'       => get_post_meta($post->ID, 'meta_key', true),
+            'label'     => get_the_title($post->ID),
+            'type'      => get_post_meta($post->ID, 'field_type', true),
+            'options'   => !empty($options_raw) ? preg_split('/\\r\\n|\\r|\\n/', $options_raw) : [],
+            'display'   => (array) get_post_meta($post->ID, 'display_location', true),
+        ];
+    }
+
+    set_transient('canna_custom_fields_definition', $fields, 12 * HOUR_IN_SECONDS);
+    return $fields;
+}

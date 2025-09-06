@@ -2,6 +2,8 @@
 namespace CannaRewards\Services;
 
 use CannaRewards\Includes\Event;
+use CannaRewards\Repositories\AchievementRepository;
+use CannaRewards\Repositories\ActionLogRepository;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -17,32 +19,37 @@ if ( ! defined( 'WPINC' ) ) {
 class GamificationService {
     private $economy_service;
     private $action_log_service;
+    private $achievement_repository;
 
-    public function __construct() {
-        $this->economy_service    = new EconomyService();
-        $this->action_log_service = new ActionLogService();
+    public function __construct(
+        EconomyService $economy_service,
+        ActionLogService $action_log_service,
+        AchievementRepository $achievement_repository
+    ) {
+        $this->economy_service    = $economy_service;
+        $this->action_log_service = $action_log_service;
+        $this->achievement_repository = $achievement_repository;
 
-        // Subscribe this service to all the events it cares about.
-        Event::listen('product_scanned', [$this, 'handle_event']);
-        Event::listen('user_rank_changed', [$this, 'handle_event']);
-        Event::listen('reward_redeemed', [$this, 'handle_event']);
+        // Subscribe this service to the specific application events it cares about.
+        $events_to_listen_for = ['product_scanned', 'user_rank_changed', 'reward_redeemed'];
+        foreach ($events_to_listen_for as $event_name) {
+            Event::listen($event_name, [$this, 'handle_event']);
+        }
     }
 
     /**
      * Generic event handler that triggers the main processing logic.
      *
      * @param array $payload The full context from the event broadcast.
+     * @param string $event_name The name of the event that was fired.
      */
-    public function handle_event( array $payload ) {
+    public function handle_event( array $payload, string $event_name ) {
         // All event payloads must contain the user_id.
-        $user_id = $payload['user_id'] ?? 0;
+        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
         if ( empty($user_id) ) {
             return;
         }
         
-        // Determine the event name from the currently running WordPress hook.
-        $event_name = current_filter();
-
         $this->check_and_process_event($user_id, $event_name, $payload);
     }
 
@@ -54,8 +61,8 @@ class GamificationService {
      * @param array  $context Full contextual data for the event.
      */
     private function check_and_process_event( int $user_id, string $event_name, array $context = [] ) {
-        $achievements_to_check = $this->get_achievements_for_event( $event_name );
-        $user_unlocked_keys    = $this->get_user_unlocked_achievement_keys( $user_id );
+        $achievements_to_check = $this->achievement_repository->findByTriggerEvent( $event_name );
+        $user_unlocked_keys    = $this->achievement_repository->getUnlockedKeysForUser( $user_id );
 
         foreach ( $achievements_to_check as $achievement ) {
             if ( in_array( $achievement->achievement_key, $user_unlocked_keys, true ) ) {
@@ -77,15 +84,8 @@ class GamificationService {
      * @return bool  True if all conditions are met.
      */
     private function evaluate_conditions( object $achievement, int $user_id, array $context ): bool {
-        global $wpdb;
-        $log_table = $wpdb->prefix . 'canna_user_action_log';
-
-        // 1. Check the trigger count.
-        $action_count = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(log_id) FROM {$log_table} WHERE user_id = %d AND action_type = %s",
-            $user_id,
-            $achievement->trigger_event
-        ));
+        // 1. Check the trigger count using the ActionLogRepository.
+        $action_count = $this->action_log_repository->countUserActions($user_id, $achievement->trigger_event);
 
         if ($action_count < (int) $achievement->trigger_count) {
             return false;
@@ -133,8 +133,7 @@ class GamificationService {
      * Awards an achievement to a user and grants points.
      */
     private function unlock_achievement( int $user_id, object $achievement ) {
-        global $wpdb;
-        $wpdb->insert( $wpdb->prefix . 'canna_user_achievements', [ 'user_id' => $user_id, 'achievement_key' => $achievement->achievement_key, 'unlocked_at' => current_time( 'mysql', 1 ) ] );
+        $this->achievement_repository->saveUnlockedAchievement( $user_id, $achievement->achievement_key );
         
         $points_reward = (int) $achievement->points_reward;
         if ( $points_reward > 0 ) {
@@ -143,26 +142,5 @@ class GamificationService {
 
         $achievement_details = [ 'key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward ];
         $this->action_log_service->record( $user_id, 'achievement_unlocked', 0, $achievement_details );
-        
-        // FUTURE: Broadcast 'achievement_unlocked' event here for other services to listen to.
-        // Event::broadcast('achievement_unlocked', ['user_id' => $user_id, 'achievement' => $achievement_details]);
-    }
-
-    /**
-     * Retrieves all active achievements for a given event trigger.
-     */
-    private function get_achievements_for_event( string $event_name ): array {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'canna_achievements';
-        return $wpdb->get_results( $wpdb->prepare( "SELECT * FROM {$table_name} WHERE is_active = 1 AND trigger_event = %s", $event_name ) );
-    }
-
-    /**
-     * Gets an array of achievement keys a user has already unlocked.
-     */
-    private function get_user_unlocked_achievement_keys( int $user_id ): array {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'canna_user_achievements';
-        return $wpdb->get_col( $wpdb->prepare( "SELECT achievement_key FROM {$table_name} WHERE user_id = %d", $user_id ) );
     }
 }

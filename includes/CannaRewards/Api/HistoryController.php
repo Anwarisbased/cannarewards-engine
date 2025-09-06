@@ -2,10 +2,8 @@
 namespace CannaRewards\Api;
 
 use WP_REST_Request;
-use WP_REST_Response;
-use WP_Error;
-use Exception;
 use CannaRewards\Services\ActionLogService;
+use Exception;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -18,8 +16,8 @@ if ( ! defined( 'WPINC' ) ) {
 class HistoryController {
     private $action_log_service;
 
-    public function __construct() {
-        $this->action_log_service = new ActionLogService();
+    public function __construct(ActionLogService $action_log_service) {
+        $this->action_log_service = $action_log_service;
     }
 
     /**
@@ -31,9 +29,9 @@ class HistoryController {
 
         try {
             $history_data = $this->action_log_service->get_user_points_history( $user_id, $limit );
-            return new WP_REST_Response( $history_data, 200 );
+            return ApiResponse::success(['history' => $history_data]);
         } catch ( Exception $e ) {
-            return new WP_Error( 'history_error', 'Could not retrieve user history.', [ 'status' => 500 ] );
+            return ApiResponse::error('Could not retrieve user history.', 'history_error', 500);
         }
     }
 }

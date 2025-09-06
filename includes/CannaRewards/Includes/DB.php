@@ -38,17 +38,18 @@ class DB {
         $achievements_table_name = $wpdb->prefix . 'canna_achievements';
         $achievements_sql = "CREATE TABLE `{$achievements_table_name}` (
             `achievement_key` varchar(100) NOT NULL,
-            `type` varchar(50) NOT NULL COMMENT 'Categorization for UI filtering',
+            `type` varchar(50) NOT NULL DEFAULT '' COMMENT 'Categorization for UI filtering',
             `title` varchar(255) NOT NULL,
             `description` text NOT NULL,
             `points_reward` int(11) DEFAULT 0 NOT NULL,
             `rarity` varchar(50) DEFAULT 'common' NOT NULL,
             `icon_url` varchar(255) DEFAULT '' NOT NULL,
             `is_active` tinyint(1) DEFAULT 1 NOT NULL,
-            `trigger_event` varchar(100) NOT NULL COMMENT 'e.g., product_scanned',
+            `trigger_event` varchar(100) NOT NULL DEFAULT '' COMMENT 'e.g., product_scanned',
             `trigger_count` int(11) NOT NULL DEFAULT 1,
             `conditions` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT NULL COMMENT 'JSON-encoded array of conditions',
             PRIMARY KEY  (`achievement_key`),
+            KEY `is_active` (`is_active`),
             KEY `trigger_event` (`trigger_event`)
         ) {$charset_collate};";
         dbDelta($achievements_sql);

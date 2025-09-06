@@ -47,7 +47,7 @@ class CatalogController {
 
     /**
      * Callback for GET /v2/catalog/products/{id}
-     * Fetches a single reward product.
+     * Fetches a single reward product and adds eligibility context for the current user.
      *
      * @param WP_REST_Request $request The incoming API request.
      * @return WP_REST_Response|WP_Error The API response.
@@ -63,7 +63,35 @@ class CatalogController {
             return new WP_Error( 'not_found', 'Product not found.', [ 'status' => 404 ] );
         }
 
-        return new WP_REST_Response( $this->format_product_for_api($product), 200 );
+        $formatted_product = $this->format_product_for_api($product);
+
+        $user_id = get_current_user_id();
+        $is_eligible_for_free_claim = false;
+
+        if ($user_id > 0) {
+            $options = get_option('canna_rewards_options', []);
+            $welcome_reward_id = (int) ($options['welcome_reward_product'] ?? 0);
+            $referral_gift_id = (int) ($options['referral_signup_gift'] ?? 0);
+
+            if ($product_id === $welcome_reward_id || $product_id === $referral_gift_id) {
+                global $wpdb;
+                $log_table = $wpdb->prefix . 'canna_user_action_log';
+                $scan_count = (int) $wpdb->get_var($wpdb->prepare(
+                    "SELECT COUNT(log_id) FROM {$log_table} WHERE user_id = %d AND action_type = 'scan'",
+                    $user_id
+                ));
+                
+                // --- THIS IS THE FIX ---
+                // The user is eligible if their scan count is 1 (from the scan they just made) or 0.
+                // Changing from `=== 0` to `<= 1` makes this consistent with the redemption handler.
+                if ($scan_count <= 1) {
+                    $is_eligible_for_free_claim = true;
+                }
+            }
+        }
+        $formatted_product['is_eligible_for_free_claim'] = $is_eligible_for_free_claim;
+
+        return new WP_REST_Response( $formatted_product, 200 );
     }
 
     /**

@@ -40,8 +40,16 @@ class ContextBuilderService {
             return [];
         }
 
-        // In a full implementation, we would add the calculated properties here.
-        // For now, we'll build the core structure.
+        // --- START FIX: Implement the engagement metrics calculation ---
+        global $wpdb;
+        $log_table = $wpdb->prefix . 'canna_user_action_log';
+
+        $total_scans = (int) $wpdb->get_var( $wpdb->prepare(
+            "SELECT COUNT(log_id) FROM {$log_table} WHERE user_id = %d AND action_type = 'scan'",
+            $user_id
+        ));
+        // --- END FIX ---
+
         return [
             'identity' => [
                 'user_id'    => $user_id,
@@ -57,7 +65,11 @@ class ContextBuilderService {
                 'rank_key' => get_user_current_rank( $user_id )['key'] ?? 'member',
                 'rank_name' => get_user_current_rank( $user_id )['name'] ?? 'Member',
             ],
-            // ... other snapshot categories from the taxonomy will be added here.
+            // --- START FIX: Add the calculated data to the payload ---
+            'engagement' => [
+                'total_scans' => $total_scans
+            ]
+            // --- END FIX ---
         ];
     }
 

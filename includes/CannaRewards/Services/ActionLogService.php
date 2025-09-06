@@ -37,17 +37,21 @@ class ActionLogService {
         global $wpdb;
         $table_name = $wpdb->prefix . 'canna_user_action_log';
 
+        // --- START FIX ---
+        // Changed the query to filter by specific action types instead of a JSON key.
+        // This is more reliable and explicit.
         $results = $wpdb->get_results(
             $wpdb->prepare(
                 "SELECT meta_data, created_at FROM {$table_name} 
                  WHERE user_id = %d 
-                 AND JSON_EXISTS(meta_data, '$.points_change')
+                 AND action_type IN ('points_granted', 'redeem')
                  ORDER BY log_id DESC 
                  LIMIT %d",
                 $user_id,
                 $limit
             )
         );
+        // --- END FIX ---
 
         $history = [];
         if ( empty( $results ) ) {

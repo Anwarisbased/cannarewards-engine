@@ -11,6 +11,8 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class AdminMenu {
 
+    const PARENT_SLUG = 'canna_rewards_settings';
+
     public static function init() {
         add_action('admin_menu', [self::class, 'add_admin_menu']);
         add_action('admin_init', [self::class, 'settings_init']);
@@ -18,39 +20,62 @@ class AdminMenu {
     }
 
     public static function add_admin_menu() {
-        add_menu_page('Brand Settings', 'Brand Settings', 'manage_options', 'canna_rewards_settings', [self::class, 'settings_page_html'], 'dashicons-store', 20);
-        add_submenu_page('canna_rewards_settings', 'QR Code Generator', 'QR Code Generator', 'manage_options', 'canna_qr_generator', [self::class, 'qr_generator_page_html']);
+        add_menu_page(
+            'Brand Settings',
+            'Brand Settings',
+            'manage_options',
+            self::PARENT_SLUG,
+            [self::class, 'settings_page_html'],
+            'dashicons-store',
+            20
+        );
+        add_submenu_page(
+            self::PARENT_SLUG,
+            'Brand Settings',
+            'Brand Settings',
+            'manage_options',
+            self::PARENT_SLUG, // Points back to the parent page render function
+            [self::class, 'settings_page_html']
+        );
+        add_submenu_page(
+            self::PARENT_SLUG,
+            'QR Code Generator',
+            'QR Code Generator',
+            'manage_options',
+            'canna_qr_generator',
+            [self::class, 'qr_generator_page_html']
+        );
     }
 
     public static function settings_init() {
         register_setting('canna_rewards_group', 'canna_rewards_options');
         
         // General Section
-        add_settings_section('canna_settings_section_general', 'General Brand Configuration', null, 'canna_rewards_settings');
-        add_settings_field('frontend_url', 'PWA Frontend URL', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'frontend_url', 'type' => 'url', 'description' => 'The base URL of your PWA for password resets and QR code links.']);
-        add_settings_field('support_email', 'Support Email Address', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'support_email', 'type' => 'email', 'description' => 'Email for all support form submissions.']);
-        add_settings_field('welcome_reward_product', 'First Scan Reward Product', [self::class, 'field_select_product_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'welcome_reward_product', 'description' => "Select the product offered for a user's first scan."]);
-        add_settings_field('referral_signup_gift', 'Referral Sign-up Gift', [self::class, 'field_select_product_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_signup_gift', 'description' => 'Select the gift for new users who sign up via referral.']);
-        add_settings_field('referral_banner_text', 'Referral Banner Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_general', ['id' => 'referral_banner_text', 'type' => 'text', 'description' => 'e.g., "🎁 Earn More By Inviting Your Friends"']);
+        add_settings_section('canna_settings_section_general', 'General Brand Configuration', null, self::PARENT_SLUG);
+        add_settings_field('frontend_url', 'PWA Frontend URL', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_general', ['id' => 'frontend_url', 'type' => 'url', 'description' => 'The base URL of your PWA for password resets and QR code links.']);
+        add_settings_field('support_email', 'Support Email Address', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_general', ['id' => 'support_email', 'type' => 'email', 'description' => 'Email for all support form submissions.']);
+        add_settings_field('welcome_reward_product', 'First Scan Reward Product', [self::class, 'field_select_product_callback'], self::PARENT_SLUG, 'canna_settings_section_general', ['id' => 'welcome_reward_product', 'description' => "Select the product offered for a user's first scan."]);
+        add_settings_field('referral_signup_gift', 'Referral Sign-up Gift', [self::class, 'field_select_product_callback'], self::PARENT_SLUG, 'canna_settings_section_general', ['id' => 'referral_signup_gift', 'description' => 'Select the gift for new users who sign up via referral.']);
+        add_settings_field('referral_banner_text', 'Referral Banner Text', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_general', ['id' => 'referral_banner_text', 'type' => 'text', 'description' => 'e.g., "🎁 Earn More By Inviting Your Friends"']);
         
         // Brand Personality Section
-        add_settings_section('canna_settings_section_personality', 'Brand Personality Engine', [self::class, 'personality_section_callback'], 'canna_rewards_settings');
-        add_settings_field('points_name', 'Name for "Points"', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'points_name', 'type' => 'text', 'placeholder' => 'Points', 'description' => 'What do you call your loyalty currency? e.g., Buds, Tokens, Karma.']);
-        add_settings_field('rank_name', 'Name for "Rank"', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'rank_name', 'type' => 'text', 'placeholder' => 'Rank', 'description' => 'What do you call your loyalty tiers? e.g., Status, Level, Tier.']);
-        add_settings_field('welcome_header', 'Welcome Header Text', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'welcome_header', 'type' => 'text', 'placeholder' => 'Welcome, {firstName}', 'description' => 'Personalize the dashboard greeting. Use {firstName} as a placeholder.']);
-        add_settings_field('scan_cta', 'Scan Button CTA', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_personality', ['id' => 'scan_cta', 'type' => 'text', 'placeholder' => 'Scan Product', 'description' => 'The primary call-to-action text on the scan button.']);
+        add_settings_section('canna_settings_section_personality', 'Brand Personality Engine', [self::class, 'personality_section_callback'], self::PARENT_SLUG);
+        add_settings_field('points_name', 'Name for "Points"', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_personality', ['id' => 'points_name', 'type' => 'text', 'placeholder' => 'Points', 'description' => 'What do you call your loyalty currency? e.g., Buds, Tokens, Karma.']);
+        add_settings_field('rank_name', 'Name for "Rank"', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_personality', ['id' => 'rank_name', 'type' => 'text', 'placeholder' => 'Rank', 'description' => 'What do you call your loyalty tiers? e.g., Status, Level, Tier.']);
+        add_settings_field('welcome_header', 'Welcome Header Text', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_personality', ['id' => 'welcome_header', 'type' => 'text', 'placeholder' => 'Welcome, {firstName}', 'description' => 'Personalize the dashboard greeting. Use {firstName} as a placeholder.']);
+        add_settings_field('scan_cta', 'Scan Button CTA', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_personality', ['id' => 'scan_cta', 'type' => 'text', 'placeholder' => 'Scan Product', 'description' => 'The primary call-to-action text on the scan button.']);
         
         // Advanced Theming Section
-        add_settings_section('canna_settings_section_theme', 'Advanced Theming (Shadcn)', [self::class, 'theme_section_callback'], 'canna_rewards_settings');
-        add_settings_field('theme_primary_font', 'Primary Font (Google Fonts)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_font', 'type' => 'text', 'description' => 'e.g., "Inter", "Montserrat", "Roboto Mono"']);
-        add_settings_field('theme_radius', 'Border Radius', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_radius', 'type' => 'text', 'description' => 'Base corner radius for elements. e.g., "0.5rem", "1rem"']);
-        add_settings_field('theme_background', 'Background (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_background', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
-        add_settings_field('theme_foreground', 'Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_foreground', 'type' => 'text', 'description' => 'HSL format: 222.2 84% 4.9%']);
-        add_settings_field('theme_card', 'Card (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_card', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
-        add_settings_field('theme_primary', 'Primary (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary', 'type' => 'text', 'description' => 'HSL format: 222.2 47.4% 11.2%']);
-        add_settings_field('theme_primary_foreground', 'Primary Foreground (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_primary_foreground', 'type' => 'text', 'description' => 'HSL format: 210 40% 98%']);
-        add_settings_field('theme_secondary', 'Secondary (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_secondary', 'type' => 'text', 'description' => 'HSL format: 210 40% 96.1%']);
-        add_settings_field('theme_destructive', 'Destructive (Light)', [self::class, 'field_html_callback'], 'canna_rewards_settings', 'canna_settings_section_theme', ['id' => 'theme_destructive', 'type' => 'text', 'description' => 'HSL format: 0 84.2% 60.2%']);
+        add_settings_section('canna_settings_section_theme', 'Advanced Theming (Shadcn)', [self::class, 'theme_section_callback'], self::PARENT_SLUG);
+        add_settings_field('theme_primary_font', 'Primary Font (Google Fonts)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_primary_font', 'type' => 'text', 'description' => 'e.g., "Inter", "Montserrat", "Roboto Mono"']);
+        add_settings_field('theme_radius', 'Border Radius', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_radius', 'type' => 'text', 'description' => 'Base corner radius for elements. e.g., "0.5rem", "1rem"']);
+        add_settings_field('theme_background', 'Background (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_background', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
+        add_settings_field('theme_foreground', 'Foreground (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_foreground', 'type' => 'text', 'description' => 'HSL format: 222.2 84% 4.9%']);
+        add_settings_field('theme_card', 'Card (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_card', 'type' => 'text', 'description' => 'HSL format: 0 0% 100%']);
+        add_settings_field('theme_primary', 'Primary (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_primary', 'type' => 'text', 'description' => 'HSL format: 222.2 47.4% 11.2%']);
+        add_settings_field('theme_primary_foreground', 'Primary Foreground (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_primary_foreground', 'type' => 'text', 'description' => 'HSL format: 210 40% 98%']);
+        add_settings_field('theme_secondary', 'Secondary (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_secondary', 'type' => 'text', 'description' => 'HSL format: 210 40% 96.1%']);
+        add_settings_field('theme_destructive', 'Destructive (Light)', [self::class, 'field_html_callback'], self::PARENT_SLUG, 'canna_settings_section_theme', ['id' => 'theme_destructive', 'type' => 'text', 'description' => 'HSL format: 0 84.2% 60.2%']);
     }
 
     public static function personality_section_callback() {
@@ -107,7 +132,7 @@ class AdminMenu {
             <form action="options.php" method="post">
                 <?php
                 settings_fields('canna_rewards_group');
-                do_settings_sections('canna_rewards_settings');
+                do_settings_sections(self::PARENT_SLUG);
                 submit_button('Save Settings');
                 ?>
             </form>

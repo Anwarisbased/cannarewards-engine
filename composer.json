@@ -20,7 +20,7 @@
             "CannaRewards\\": "includes/CannaRewards/"
         },
         "files": [
-            "includes/CannaRewards/Includes/Event.php"
+            "includes/canna-core-functions.php"
         ]
     },
     "scripts": {
