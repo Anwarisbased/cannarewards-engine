@@ -3,8 +3,10 @@ namespace CannaRewards\Services;
 
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Commands\UpdateProfileCommand;
+use CannaRewards\DTO\FullProfileDTO;
 use CannaRewards\DTO\RankDTO;
 use CannaRewards\DTO\SessionUserDTO;
+use CannaRewards\DTO\ShippingAddressDTO;
 use Exception;
 
 // Exit if accessed directly.
@@ -67,11 +69,6 @@ class UserService {
         return $handler->handle($command);
     }
     
-    /**
-     * Gets the minimal, lightweight data needed for an authenticated session.
-     *
-     * @return SessionUserDTO A strongly-typed object instead of a magic array.
-     */
     public function get_user_session_data( int $user_id ): SessionUserDTO {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -107,10 +104,10 @@ class UserService {
     /**
      * Gets the complete profile data for a user, including all custom fields.
      */
-    public function get_full_profile_data( int $user_id ): array {
+    public function get_full_profile_data( int $user_id ): FullProfileDTO {
         $user = get_userdata($user_id);
         if (!$user) {
-            return [];
+            throw new Exception("User with ID {$user_id} not found.");
         }
 
         $custom_fields_definitions = canna_get_custom_fields_definitions();
@@ -122,26 +119,26 @@ class UserService {
             }
         }
         
-        $shipping_address = [
-            'first_name' => get_user_meta($user_id, 'shipping_first_name', true),
-            'last_name' => get_user_meta($user_id, 'shipping_last_name', true),
-            'address_1' => get_user_meta($user_id, 'shipping_address_1', true),
-            'city' => get_user_meta($user_id, 'shipping_city', true),
-            'state' => get_user_meta($user_id, 'shipping_state', true),
-            'postcode' => get_user_meta($user_id, 'shipping_postcode', true),
+        $shipping_dto = new ShippingAddressDTO();
+        $shipping_dto->first_name = get_user_meta($user_id, 'shipping_first_name', true);
+        $shipping_dto->last_name = get_user_meta($user_id, 'shipping_last_name', true);
+        $shipping_dto->address_1 = get_user_meta($user_id, 'shipping_address_1', true);
+        $shipping_dto->city = get_user_meta($user_id, 'shipping_city', true);
+        $shipping_dto->state = get_user_meta($user_id, 'shipping_state', true);
+        $shipping_dto->postcode = get_user_meta($user_id, 'shipping_postcode', true);
+
+        $profile_dto = new FullProfileDTO();
+        $profile_dto->lastName = $user->last_name;
+        $profile_dto->phone_number = get_user_meta($user_id, 'phone_number', true);
+        $profile_dto->referral_code = get_user_meta($user_id, '_canna_referral_code', true);
+        $profile_dto->shipping_address = $shipping_dto;
+        // $profile_dto->unlocked_achievement_keys = ... // This would come from AchievementRepository in the future
+        $profile_dto->custom_fields = (object) [
+            'definitions' => $custom_fields_definitions,
+            'values'      => (object) $custom_fields_values,
         ];
 
-        return [
-            'lastName'                  => $user->last_name,
-            'phone_number'              => get_user_meta($user_id, 'phone_number', true),
-            'referral_code'             => get_user_meta($user_id, '_canna_referral_code', true),
-            'shipping_address'          => $shipping_address,
-            'unlocked_achievement_keys' => [],
-            'custom_fields'             => [
-                'definitions' => $custom_fields_definitions,
-                'values'      => (object) $custom_fields_values,
-            ],
-        ];
+        return $profile_dto;
     }
 
     /**

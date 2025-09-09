@@ -10,18 +10,17 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Context Builder Service
- *
- * Assembles the rich, standardized data objects (user_snapshot, product_snapshot, event_context)
- * that are attached to every event in the system. This is the heart of the data enrichment pipeline.
  */
 class ContextBuilderService {
 
+    private RankService $rankService;
+
+    public function __construct(RankService $rankService) {
+        $this->rankService = $rankService;
+    }
+
     /**
      * Builds the complete, enriched context for a given event.
-     *
-     * @param int     $user_id       The ID of the user the event pertains to.
-     * @param ?WP_Post $product_post (Optional) The product post object if the event is product-related.
-     * @return array The complete context array.
      */
     public function build_event_context( int $user_id, ?WP_Post $product_post = null ): array {
         return [
@@ -40,15 +39,16 @@ class ContextBuilderService {
             return [];
         }
 
-        // --- START FIX: Implement the engagement metrics calculation ---
         global $wpdb;
         $log_table = $wpdb->prefix . 'canna_user_action_log';
-
         $total_scans = (int) $wpdb->get_var( $wpdb->prepare(
             "SELECT COUNT(log_id) FROM {$log_table} WHERE user_id = %d AND action_type = 'scan'",
             $user_id
         ));
-        // --- END FIX ---
+        
+        // --- THIS IS THE FIX ---
+        // We now use the injected RankService instead of the dead global function.
+        $rank_dto = $this->rankService->getUserRank($user_id);
 
         return [
             'identity' => [
@@ -62,14 +62,12 @@ class ContextBuilderService {
                 'lifetime_points' => get_user_lifetime_points( $user_id ),
             ],
             'status' => [
-                'rank_key' => get_user_current_rank( $user_id )['key'] ?? 'member',
-                'rank_name' => get_user_current_rank( $user_id )['name'] ?? 'Member',
+                'rank_key' => $rank_dto->key,
+                'rank_name' => $rank_dto->name,
             ],
-            // --- START FIX: Add the calculated data to the payload ---
             'engagement' => [
                 'total_scans' => $total_scans
             ]
-            // --- END FIX ---
         ];
     }
 
@@ -82,7 +80,6 @@ class ContextBuilderService {
             return [];
         }
 
-        // In a full implementation, we would pull all attributes and tags here.
         return [
             'identity' => [
                 'product_id'   => $product->get_id(),
@@ -104,7 +101,6 @@ class ContextBuilderService {
      * Assembles the event_context snapshot from server variables.
      */
     private function build_event_context_snapshot(): array {
-        // In a production environment, use a trusted GeoIP library.
         return [
             'time'     => [
                 'timestamp_utc' => gmdate('Y-m-d\TH:i:s\Z'),

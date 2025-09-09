@@ -22,7 +22,8 @@ class DIContainer {
     }
 
     private function bootstrap(): void {
-        // --- REPOSITORIES ---
+        // --- PHASE 1: REPOSITORIES ---
+        // These have no dependencies, so they come first.
         $this->registry[Repositories\ActionLogRepository::class] = new Repositories\ActionLogRepository();
         $this->registry[Repositories\AchievementRepository::class] = new Repositories\AchievementRepository();
         $this->registry[Repositories\OrderRepository::class] = new Repositories\OrderRepository();
@@ -30,35 +31,28 @@ class DIContainer {
         $this->registry[Repositories\RewardCodeRepository::class] = new Repositories\RewardCodeRepository();
         $this->registry[Repositories\UserRepository::class] = new Repositories\UserRepository();
         
-        // --- POLICIES ---
+        // --- PHASE 2: POLICIES ---
+        // These only depend on repositories.
         $this->registry[Policies\UserCanAffordRedemptionPolicy::class] = new Policies\UserCanAffordRedemptionPolicy(
             $this->get(Repositories\ProductRepository::class),
             $this->get(Repositories\UserRepository::class)
         );
         $this->registry[Policies\UserAccountIsUniquePolicy::class] = new Policies\UserAccountIsUniquePolicy();
 
-        $economy_policy_map = [
-            Commands\RedeemRewardCommand::class => [
-                Policies\UserCanAffordRedemptionPolicy::class,
-            ],
-        ];
-
-        $user_policy_map = [
-            Commands\CreateUserCommand::class => [
-                Policies\UserAccountIsUniquePolicy::class,
-            ],
-        ];
-
-        // --- SERVICES ---
+        // --- PHASE 3: STANDALONE & FOUNDATIONAL SERVICES ---
+        // These services have no dependencies on other services.
+        $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
+        $this->registry[Services\ContentService::class] = new Services\ContentService();
         $this->registry[Services\RulesEngineService::class] = new Services\RulesEngineService();
         $this->registry[Services\RankService::class] = new Services\RankService($this->get(Repositories\UserRepository::class));
-        $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
+        $this->registry[Services\ContextBuilderService::class] = new Services\ContextBuilderService($this->get(Services\RankService::class));
+        $this->registry[Services\EventFactory::class] = new Services\EventFactory($this->get(Services\ContextBuilderService::class));
         $this->registry[Services\CDPService::class] = new Services\CDPService($this->get(Services\RankService::class));
         $this->registry[Services\ConfigService::class] = new Services\ConfigService($this->get(Services\RankService::class));
-        $this->registry[Services\ContentService::class] = new Services\ContentService();
-        $this->registry[Services\ContextBuilderService::class] = new Services\ContextBuilderService();
-        $this->registry[Services\EventFactory::class] = new Services\EventFactory($this->get(Services\ContextBuilderService::class));
         
+        // --- PHASE 4: COMPLEX & INTER-DEPENDENT SERVICES ---
+        // These services depend on other services, so they are built last.
+        $user_policy_map = [ Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, ], ];
         $user_service = new Services\UserService(
             $this->get(Services\CDPService::class),
             $this->get(Services\ActionLogService::class),
@@ -68,6 +62,7 @@ class DIContainer {
         );
         $this->registry[Services\UserService::class] = $user_service;
 
+        $economy_policy_map = [ Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class, ], ];
         $economy_service = new Services\EconomyService(
             $this->get(Services\ActionLogService::class),
             $this->get(Services\ContextBuilderService::class),
@@ -77,23 +72,25 @@ class DIContainer {
             $economy_policy_map,
             $this->get(Services\RankService::class)
         );
-        $economy_service->set_user_service($user_service);
         $this->registry[Services\EconomyService::class] = $economy_service;
 
         $referral_service = new Services\ReferralService($economy_service, $this->get(Services\CDPService::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\ActionLogRepository::class));
-        $user_service->set_referral_service($referral_service);
         $this->registry[Services\ReferralService::class] = $referral_service;
-
-        $this->registry[Services\GamificationService::class] = new Services\GamificationService(
+        
+        $gamification_service = new Services\GamificationService(
             $economy_service,
             $this->get(Services\ActionLogService::class),
             $this->get(Repositories\AchievementRepository::class),
             $this->get(Repositories\ActionLogRepository::class),
             $this->get(Services\RulesEngineService::class)
         );
-        
-        // --- COMMAND HANDLERS ---
-        // (No changes here)
+        $this->registry[Services\GamificationService::class] = $gamification_service;
+
+        // --- PHASE 5: RESOLVE CIRCULAR DEPENDENCIES ---
+        $economy_service->set_user_service($user_service);
+        $user_service->set_referral_service($referral_service);
+
+        // --- PHASE 6: COMMAND HANDLERS ---
         $create_user_handler = new Commands\CreateUserCommandHandler($this->get(Repositories\UserRepository::class), $this->get(Services\CDPService::class));
         $create_user_handler->setReferralService($referral_service);
         $user_service->registerCommandHandler(Commands\CreateUserCommand::class, $create_user_handler);
@@ -123,8 +120,7 @@ class DIContainer {
         $register_with_token_handler = new Commands\RegisterWithTokenCommandHandler($user_service, $economy_service);
         $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
 
-        // --- CONTROLLERS ---
-        // (No changes here)
+        // --- PHASE 7: CONTROLLERS ---
         $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
         $this->registry[Api\CatalogController::class] = new Api\CatalogController();
         $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));

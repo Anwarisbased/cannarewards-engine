@@ -5,11 +5,6 @@ use WP_REST_Request;
 use CannaRewards\Repositories\OrderRepository;
 use Exception;
 
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
 class OrdersController {
     private $order_repository;
 
@@ -17,14 +12,16 @@ class OrdersController {
         $this->order_repository = $order_repository;
     }
 
-    public function get_orders( WP_REST_Request $request ) {
+    public function get_orders(WP_REST_Request $request) {
         $user_id = get_current_user_id();
         $limit   = (int) $request->get_param('limit') ?: 50;
 
         try {
-            $orders_data = $this->order_repository->getUserOrders( $user_id, $limit );
+            $order_dtos = $this->order_repository->getUserOrders($user_id, $limit);
+            // Cast each DTO in the array to an array for the final response.
+            $orders_data = array_map(fn($dto) => (array) $dto, $order_dtos);
             return ApiResponse::success(['orders' => $orders_data]);
-        } catch ( Exception $e ) {
+        } catch (Exception $e) {
             return ApiResponse::error('Could not retrieve user orders.', 'orders_error', 500);
         }
     }

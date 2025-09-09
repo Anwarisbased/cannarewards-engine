@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Repositories;
 
+use CannaRewards\DTO\OrderDTO;
 use Exception;
 
 // Exit if accessed directly.
@@ -10,8 +11,6 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Order Repository
- *
- * Handles data access related to WooCommerce orders.
  */
 class OrderRepository {
     
@@ -62,6 +61,9 @@ class OrderRepository {
         }
     }
 
+    /**
+     * @return OrderDTO[]
+     */
     public function getUserOrders(int $user_id, int $limit = 50): array {
         if (!function_exists('wc_get_orders')) {
             return [];
@@ -98,15 +100,14 @@ class OrderRepository {
                 $items[] = $item->get_name();
             }
 
-            $formatted_orders[] = [
-                'orderId'   => $order->get_id(),
-                // --- THIS IS THE FIX ---
-                // The OpenAPI spec expects a 'YYYY-MM-DD' format. We change the PHP date format to match.
-                'date'      => $order->get_date_created()->date('Y-m-d'),
-                'status'    => ucfirst($order->get_status()),
-                'items'     => implode(', ', $items),
-                'imageUrl'  => $image_url,
-            ];
+            $dto = new OrderDTO();
+            $dto->orderId = $order->get_id();
+            $dto->date = $order->get_date_created()->date('Y-m-d');
+            $dto->status = ucfirst($order->get_status());
+            $dto->items = implode(', ', $items);
+            $dto->imageUrl = $image_url;
+
+            $formatted_orders[] = $dto;
         }
 
         return $formatted_orders;
