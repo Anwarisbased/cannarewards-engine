@@ -4,7 +4,7 @@ namespace CannaRewards\Container;
 use CannaRewards\Repositories;
 use CannaRewards\Services;
 use CannaRewards\Commands;
-use CannaRewards\Policies; // <-- Import Policies
+use CannaRewards\Policies;
 use CannaRewards\Api;
 
 class DIContainer {
@@ -35,10 +35,17 @@ class DIContainer {
             $this->get(Repositories\ProductRepository::class),
             $this->get(Repositories\UserRepository::class)
         );
+        $this->registry[Policies\UserAccountIsUniquePolicy::class] = new Policies\UserAccountIsUniquePolicy();
 
         $economy_policy_map = [
             Commands\RedeemRewardCommand::class => [
                 Policies\UserCanAffordRedemptionPolicy::class,
+            ],
+        ];
+
+        $user_policy_map = [
+            Commands\CreateUserCommand::class => [
+                Policies\UserAccountIsUniquePolicy::class,
             ],
         ];
 
@@ -49,7 +56,12 @@ class DIContainer {
         $this->registry[Services\ContentService::class] = new Services\ContentService();
         $this->registry[Services\ContextBuilderService::class] = new Services\ContextBuilderService();
         
-        $user_service = new Services\UserService($this->get(Services\CDPService::class), $this->get(Services\ActionLogService::class));
+        $user_service = new Services\UserService(
+            $this->get(Services\CDPService::class),
+            $this->get(Services\ActionLogService::class),
+            $this,
+            $user_policy_map
+        );
         $this->registry[Services\UserService::class] = $user_service;
 
         $economy_service = new Services\EconomyService(
@@ -57,8 +69,8 @@ class DIContainer {
             $this->get(Services\ContextBuilderService::class),
             $this->get(Repositories\RewardCodeRepository::class),
             $this->get(Repositories\ProductRepository::class),
-            $this, // Pass the container itself
-            $economy_policy_map // Pass the policy map
+            $this,
+            $economy_policy_map
         );
         $economy_service->set_user_service($user_service);
         $this->registry[Services\EconomyService::class] = $economy_service;
@@ -99,7 +111,6 @@ class DIContainer {
         $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
 
         // --- CONTROLLERS ---
-        // (No changes here)
         $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
         $this->registry[Api\CatalogController::class] = new Api\CatalogController();
         $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));

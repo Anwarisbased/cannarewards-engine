@@ -20,10 +20,19 @@ class UserService {
     private $cdp_service;
     private $action_log_service;
     private $referral_service;
+    private $policy_map = []; // The map of Command => [Policies]
+    private $container;     // The DI container to build policies
 
-    public function __construct(CDPService $cdp_service, ActionLogService $action_log_service) {
+    public function __construct(
+        CDPService $cdp_service,
+        ActionLogService $action_log_service,
+        \CannaRewards\Container\DIContainer $container, // Inject the container
+        array $policy_map = []                         // Inject the policy map
+    ) {
         $this->cdp_service = $cdp_service;
         $this->action_log_service = $action_log_service;
+        $this->container = $container;
+        $this->policy_map = $policy_map;
     }
 
     public function set_referral_service(ReferralService $referral_service): void {
@@ -36,6 +45,14 @@ class UserService {
 
     public function handle($command) {
         $command_class = get_class($command);
+        
+        // --- THE GAUNTLET ---
+        $policies_for_command = $this->policy_map[$command_class] ?? [];
+        foreach ($policies_for_command as $policy_class) {
+            $policy = $this->container->get($policy_class);
+            $policy->check($command);
+        }
+
         if (!isset($this->command_map[$command_class])) {
             throw new Exception("No handler registered for user command: {$command_class}");
         }
@@ -48,12 +65,6 @@ class UserService {
         return $handler->handle($command);
     }
     
-    /**
-     * Gets the minimal, lightweight data needed for an authenticated session.
-     * This is a "read" operation, so it remains in the service.
-     *
-     * @return SessionUserDTO A strongly-typed object instead of a magic array.
-     */
     public function get_user_session_data( int $user_id ): SessionUserDTO {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -90,10 +101,6 @@ class UserService {
         return $session_dto;
     }
     
-    /**
-     * Gets the complete profile data for a user, including all custom fields.
-     * This is a "read" operation, so it remains in the service.
-     */
     public function get_full_profile_data( int $user_id ): array {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -123,7 +130,7 @@ class UserService {
             'phone_number'              => get_user_meta($user_id, 'phone_number', true),
             'referral_code'             => get_user_meta($user_id, '_canna_referral_code', true),
             'shipping_address'          => $shipping_address,
-            'unlocked_achievement_keys' => [], // This would come from AchievementRepository
+            'unlocked_achievement_keys' => [],
             'custom_fields'             => [
                 'definitions' => $custom_fields_definitions,
                 'values'      => (object) $custom_fields_values,
@@ -131,9 +138,6 @@ class UserService {
         ];
     }
 
-    /**
-     * Gets the dynamic data needed for the main user dashboard.
-     */
     public function get_user_dashboard_data( int $user_id ): array {
         return [
             'lifetime_points' => get_user_lifetime_points( $user_id ),

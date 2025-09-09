@@ -28,15 +28,9 @@ final class CreateUserCommandHandler {
         }
 
         // --- THE PAYOFF ---
-        // We no longer need to check if the email is valid or if it already exists.
-        // The Value Object creation at the API layer handles validation.
-        // A dedicated Policy will handle the existence check.
-        // The handler is now dumber and trusts its inputs.
-        $email_string = (string) $command->email; // Cast the Value Object back to a string for WordPress functions
-
-        if (email_exists($email_string)) {
-            throw new Exception('An account with that email already exists.', 409);
-        }
+        // The Policy Layer now handles the email existence check.
+        // This handler is now dumber, cleaner, and only knows the "happy path".
+        $email_string = (string) $command->email;
 
         if (empty($command->password)) {
             throw new Exception('A password is required.', 400);
