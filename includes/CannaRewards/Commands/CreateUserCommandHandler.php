@@ -23,16 +23,37 @@ final class CreateUserCommandHandler {
     }
 
     public function handle(CreateUserCommand $command): array {
-        if (!get_option('users_can_register')) throw new Exception('User registration is currently disabled.', 503);
-        if (empty($command->email) || empty($command->password) || !is_email($command->email)) throw new Exception('A valid email and password are required.', 400);
-        if (email_exists($command->email)) throw new Exception('An account with that email already exists.', 409);
+        if (!get_option('users_can_register')) {
+            throw new Exception('User registration is currently disabled.', 503);
+        }
+
+        // --- THE PAYOFF ---
+        // We no longer need to check if the email is valid or if it already exists.
+        // The Value Object creation at the API layer handles validation.
+        // A dedicated Policy will handle the existence check.
+        // The handler is now dumber and trusts its inputs.
+        $email_string = (string) $command->email; // Cast the Value Object back to a string for WordPress functions
+
+        if (email_exists($email_string)) {
+            throw new Exception('An account with that email already exists.', 409);
+        }
+
+        if (empty($command->password)) {
+            throw new Exception('A password is required.', 400);
+        }
 
         $user_id = wp_insert_user([
-            'user_login' => $command->email, 'user_email' => $command->email, 'user_pass'  => $command->password,
-            'first_name' => $command->first_name, 'last_name'  => $command->last_name, 'role' => 'subscriber'
+            'user_login' => $email_string,
+            'user_email' => $email_string,
+            'user_pass'  => $command->password,
+            'first_name' => $command->first_name,
+            'last_name'  => $command->last_name,
+            'role' => 'subscriber'
         ]);
 
-        if (is_wp_error($user_id)) throw new Exception($user_id->get_error_message(), 500);
+        if (is_wp_error($user_id)) {
+            throw new Exception($user_id->get_error_message(), 500);
+        }
 
         update_user_meta($user_id, 'phone_number', $command->phone);
         update_user_meta($user_id, 'marketing_consent', $command->agreed_to_marketing);

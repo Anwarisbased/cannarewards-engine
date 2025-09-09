@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\EmailAddress;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -8,19 +10,20 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Command DTO for creating a new user.
+ * It now requires a validated EmailAddress Value Object.
  */
 final class CreateUserCommand {
-    public $email;
-    public $password;
-    public $first_name;
-    public $last_name;
-    public $phone;
-    public $agreed_to_terms;
-    public $agreed_to_marketing;
-    public $referral_code;
+    public EmailAddress $email; // <-- Type-hinted to the Value Object
+    public string $password;
+    public string $first_name;
+    public string $last_name;
+    public string $phone;
+    public bool $agreed_to_terms;
+    public bool $agreed_to_marketing;
+    public ?string $referral_code;
 
     public function __construct(
-        string $email,
+        EmailAddress $email, // <-- The constructor demands the Value Object
         string $password,
         string $first_name,
         string $last_name,

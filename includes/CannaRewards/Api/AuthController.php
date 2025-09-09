@@ -5,6 +5,7 @@ use WP_REST_Request;
 use CannaRewards\Services\UserService;
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Commands\RegisterWithTokenCommand;
+use CannaRewards\Domain\ValueObjects\EmailAddress; // <-- Import the Value Object
 use Exception;
 
 // Exit if accessed directly.
@@ -22,8 +23,14 @@ class AuthController {
     public function register_user( WP_REST_Request $request ) {
         try {
             $params = $request->get_json_params();
+
+            // --- THE VALIDATION EDGE ---
+            // We create the Value Object here. If the email is invalid,
+            // an exception is thrown and the command is never created or dispatched.
+            $email_vo = new EmailAddress($params['email'] ?? '');
+
             $command = new CreateUserCommand(
-                sanitize_email($params['email'] ?? ''),
+                $email_vo, // <-- Pass the guaranteed-valid Value Object
                 $params['password'] ?? '',
                 sanitize_text_field($params['firstName'] ?? ''),
                 sanitize_text_field($params['lastName'] ?? ''),
@@ -36,6 +43,7 @@ class AuthController {
             $result = $this->user_service->handle($command);
             return ApiResponse::success($result, 201);
         } catch ( Exception $e ) {
+            // This will catch the InvalidArgumentException from the Value Object constructor
             return ApiResponse::error($e->getMessage(), 'registration_failed', $e->getCode() ?: 400);
         }
     }
@@ -43,8 +51,14 @@ class AuthController {
     public function register_with_token( WP_REST_Request $request ) {
         try {
             $params = $request->get_json_params();
+
+            // Also apply the Value Object validation here for consistency
+            $email_vo = new EmailAddress($params['email'] ?? '');
+            
+            // The RegisterWithTokenCommand still expects a string for email, so we cast it back.
+            // This is a temporary step; ideally, this command would also be updated to accept an EmailAddress object.
             $command = new RegisterWithTokenCommand(
-                sanitize_email($params['email'] ?? ''),
+                (string) $email_vo,
                 $params['password'] ?? '',
                 sanitize_text_field($params['firstName'] ?? ''),
                 sanitize_text_field($params['lastName'] ?? ''),
@@ -57,8 +71,6 @@ class AuthController {
 
             $result = $this->user_service->handle($command);
             
-            // Directly return the payload in a standard response, just like the login_user method does.
-            // This bypasses the 'data' wrapper and ensures a consistent auth response.
             return new \WP_REST_Response($result, 200);
 
         } catch ( Exception $e ) {
