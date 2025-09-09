@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "User Snapshot v1",
+  "type": "object",
+  "properties": {
+    "identity": {
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "integer" },
+        "email": { "type": "string", "format": "email" },
+        "first_name": { "type": ["string", "null"] },
+        "created_at": { "type": "string" }
+      },
+      "required": ["user_id", "email", "created_at"]
+    },
+    "economy": {
+      "type": "object",
+      "properties": {
+        "points_balance": { "type": "integer" },
+        "lifetime_points": { "type": "integer" }
+      },
+      "required": ["points_balance", "lifetime_points"]
+    },
+    "status": {
+      "type": "object",
+      "properties": {
+        "rank_key": { "type": "string" },
+        "rank_name": { "type": "string" }
+      },
+      "required": ["rank_key", "rank_name"]
+    },
+    "engagement": {
+      "type": "object",
+      "properties": {
+        "total_scans": { "type": "integer" }
+      },
+      "required": ["total_scans"]
+    }
+  },
+  "required": ["identity", "economy", "status", "engagement"]
+}

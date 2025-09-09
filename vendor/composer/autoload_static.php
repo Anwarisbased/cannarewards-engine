@@ -4,16 +4,34 @@
 
 namespace Composer\Autoload;
 
-class ComposerStaticInita2d9fe3a3935209d616338e413db399c
+class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
 {
     public static $files = array (
+        'b33e3d135e5d9e47d845c576147bda89' => __DIR__ . '/..' . '/php-di/php-di/src/functions.php',
         'cbbaab450dd8af856658ba077916b883' => __DIR__ . '/../..' . '/includes/canna-core-functions.php',
     );
 
     public static $prefixLengthsPsr4 = array (
         'P' => 
         array (
+            'Psr\\Container\\' => 14,
             'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\' => 57,
+        ),
+        'L' => 
+        array (
+            'Laravel\\SerializableClosure\\' => 28,
+        ),
+        'J' => 
+        array (
+            'JsonSchema\\' => 11,
+        ),
+        'I' => 
+        array (
+            'Invoker\\' => 8,
+        ),
+        'D' => 
+        array (
+            'DI\\' => 3,
         ),
         'C' => 
         array (
@@ -22,9 +40,29 @@ class ComposerStaticInita2d9fe3a3935209d616338e413db399c
     );
 
     public static $prefixDirsPsr4 = array (
+        'Psr\\Container\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/psr/container/src',
+        ),
         'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\' => 
         array (
             0 => __DIR__ . '/..' . '/dealerdirect/phpcodesniffer-composer-installer/src',
+        ),
+        'Laravel\\SerializableClosure\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/laravel/serializable-closure/src',
+        ),
+        'JsonSchema\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/justinrainbow/json-schema/src/JsonSchema',
+        ),
+        'Invoker\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/php-di/invoker/src',
+        ),
+        'DI\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/php-di/php-di/src',
         ),
         'CannaRewards\\' => 
         array (
@@ -89,9 +127,9 @@ class ComposerStaticInita2d9fe3a3935209d616338e413db399c
     public static function getInitializer(ClassLoader $loader)
     {
         return \Closure::bind(function () use ($loader) {
-            $loader->prefixLengthsPsr4 = ComposerStaticInita2d9fe3a3935209d616338e413db399c::$prefixLengthsPsr4;
-            $loader->prefixDirsPsr4 = ComposerStaticInita2d9fe3a3935209d616338e413db399c::$prefixDirsPsr4;
-            $loader->classMap = ComposerStaticInita2d9fe3a3935209d616338e413db399c::$classMap;
+            $loader->prefixLengthsPsr4 = ComposerStaticInit657dd1fc61ccb3462db486eff7be9986::$prefixLengthsPsr4;
+            $loader->prefixDirsPsr4 = ComposerStaticInit657dd1fc61ccb3462db486eff7be9986::$prefixDirsPsr4;
+            $loader->classMap = ComposerStaticInit657dd1fc61ccb3462db486eff7be9986::$classMap;
 
         }, null, ClassLoader::class);
     }

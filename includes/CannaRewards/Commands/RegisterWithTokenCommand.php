@@ -1,19 +1,21 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\EmailAddress;
+
 final class RegisterWithTokenCommand {
-    public $email;
-    public $password;
-    public $first_name;
-    public $last_name;
-    public $phone;
-    public $agreed_to_terms;
-    public $agreed_to_marketing;
-    public $referral_code;
-    public $registration_token;
+    public EmailAddress $email;
+    public string $password;
+    public string $first_name;
+    public string $last_name;
+    public string $phone;
+    public bool $agreed_to_terms;
+    public bool $agreed_to_marketing;
+    public ?string $referral_code;
+    public string $registration_token;
 
     public function __construct(
-        string $email,
+        EmailAddress $email,
         string $password,
         string $first_name,
         string $last_name,

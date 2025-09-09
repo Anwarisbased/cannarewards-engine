@@ -4,11 +4,12 @@
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
     "require": {
-        "php-di/php-di": "^7.0"
+        "php-di/php-di": "^7.0",
+        "justinrainbow/json-schema": "^5.2"
     },
     "require-dev": {
-        "phpunit/phpunit": "^9.5",
-        "yoast/wp-test-utils": "^1.2"
+        "wp-coding-standards/wpcs": "^3.0",
+        "phpcompatibility/phpcompatibility-wp": "^2.1"
     },
     "autoload": {
         "psr-4": {
@@ -19,7 +20,11 @@
         ]
     },
     "scripts": {
-        "lint": "phpcs",
-        "test": "phpunit"
+        "lint": "./vendor/bin/phpcs"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true
+        }
     }
 }
