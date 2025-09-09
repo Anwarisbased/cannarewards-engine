@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Commands\GrantPointsCommand;
 use CannaRewards\Includes\Event;
 use CannaRewards\Repositories\AchievementRepository;
 use CannaRewards\Repositories\ActionLogRepository;
@@ -79,7 +80,14 @@ class GamificationService {
         
         $points_reward = (int) $achievement->points_reward;
         if ($points_reward > 0) {
-            $this->economy_service->grant_points($user_id, $points_reward, 'Achievement Unlocked: ' . $achievement->title);
+            // --- THIS IS THE FIX ---
+            // Dispatch a command instead of calling the insecure public method.
+            $command = new GrantPointsCommand(
+                $user_id,
+                $points_reward,
+                'Achievement Unlocked: ' . $achievement->title
+            );
+            $this->economy_service->handle($command);
         }
 
         $achievement_details = ['key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward];

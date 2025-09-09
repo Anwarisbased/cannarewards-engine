@@ -13,11 +13,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Economy Service (Command Bus)
- *
- * The central "bank" for the platform. This service acts as a dispatcher,
- * delegating actions to dedicated handlers. It is the ONLY class allowed
- * to modify a user's points balance.
+ * Economy Service (A Pure Command Bus)
  */
 class EconomyService {
     private ActionLogService $action_log_service;
@@ -47,44 +43,35 @@ class EconomyService {
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
 
-        // Listen for the event broadcast by the ReferralService.
+        // Listen for the event broadcast by other services like ReferralService.
         Event::listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
     }
 
     /**
-     * Handles the event to grant points.
+     * Handles the event to grant points by dispatching the secure command.
      */
     public function handle_grant_points_event(array $payload) {
         if (isset($payload['user_id'], $payload['points'], $payload['description'])) {
-            $this->grant_points(
+            $command = new \CannaRewards\Commands\GrantPointsCommand(
                 (int) $payload['user_id'],
                 (int) $payload['points'],
                 (string) $payload['description']
             );
+            $this->handle($command);
         }
     }
 
-    /**
-     * Setter method to resolve circular dependency with UserService.
-     */
     public function set_user_service(UserService $user_service) {
         $this->user_service = $user_service;
     }
 
-    /**
-     * Registers a handler for a specific command class.
-     */
     public function registerCommandHandler(string $command_class, object $handler_instance): void {
         $this->command_map[$command_class] = $handler_instance;
     }
 
-    /**
-     * The main entry point to handle economy-related commands.
-     */
     public function handle($command) {
         $command_class = get_class($command);
 
-        // --- THE GAUNTLET ---
         $policies_for_command = $this->policy_map[$command_class] ?? [];
         foreach ($policies_for_command as $policy_class) {
             $policy = $this->container->get($policy_class);
@@ -95,60 +82,19 @@ class EconomyService {
             throw new Exception("No handler registered for command: {$command_class}");
         }
         $handler = $this->command_map[$command_class];
+
+        if (method_exists($handler, 'setEconomyService')) {
+            $handler->setEconomyService($this);
+        }
+
         return $handler->handle($command);
     }
-    
-    /**
-     * Grants points to a user. This remains a core utility method.
-     */
-    public function grant_points( int $user_id, int $base_points, string $description, float $temp_multiplier = 1.0 ): array {
-        $user_rank_dto    = $this->rankService->getUserRank($user_id);
-        $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
-        $final_multiplier = max( $rank_multiplier, $temp_multiplier );
-        $points_to_grant  = floor( $base_points * $final_multiplier );
-
-        $current_balance     = get_user_points_balance( $user_id );
-        $new_balance         = $current_balance + $points_to_grant;
-        update_user_meta( $user_id, '_canna_points_balance', $new_balance );
-
-        $lifetime_points     = get_user_lifetime_points( $user_id );
-        $new_lifetime_points = $lifetime_points + $points_to_grant;
-        update_user_meta( $user_id, '_canna_lifetime_points', $new_lifetime_points );
-
-        $log_meta_data = [
-            'description'        => $description,
-            'points_change'      => $points_to_grant,
-            'new_balance'        => $new_balance,
-            'base_points'        => $base_points,
-            'multiplier_applied' => $final_multiplier > 1.0 ? $final_multiplier : null,
-        ];
-        $this->action_log_service->record( $user_id, 'points_granted', 0, $log_meta_data );
-
-        $this->check_and_apply_rank_transition( $user_id );
-
-        return [
-            'points_earned'      => $points_to_grant,
-            'new_points_balance' => $new_balance,
-        ];
-    }
 
     /**
-     * Temporary helper to get a multiplier from a rank key.
+     * Checks for rank transitions. This method is public so the
+     * GrantPointsCommandHandler can call it.
      */
-    private function getRankMultiplier(string $rankKey): float {
-        $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');
-        if ($rank_post) {
-            $multiplier = get_post_meta($rank_post->ID, 'point_multiplier', true);
-            return !empty($multiplier) ? (float) $multiplier : 1.0;
-        }
-        return 1.0;
-    }
-
-
-    /**
-     * Checks for rank transitions.
-     */
-    private function check_and_apply_rank_transition( int $user_id ) {
+    public function check_and_apply_rank_transition( int $user_id ) {
         $current_rank_key = get_user_meta( $user_id, '_canna_current_rank_key', true ) ?: 'member';
         
         $new_rank_dto = $this->rankService->getUserRank($user_id);
@@ -173,31 +119,5 @@ class EconomyService {
                 'new_rank' => $new_rank_object,
             ]));
         }
-    }
-
-    /**
-     * The single, authoritative method for processing a QR code claim.
-     */
-    public function claimCode(int $user_id, string $code_to_claim): array {
-        $code_data = $this->reward_code_repository->findValidCode($code_to_claim);
-        if (!$code_data) {
-            throw new Exception('This code is invalid or has already been used.');
-        }
-
-        $product_id = $this->product_repository->findIdBySku($code_data->sku);
-        if (!$product_id) {
-            throw new Exception('The product associated with this code could not be found.');
-        }
-
-        $this->reward_code_repository->markCodeAsUsed($code_data->id, $user_id);
-        $this->action_log_service->record($user_id, 'scan', $product_id);
-
-        $product_post = get_post($product_id);
-        
-        return [
-            'product_id' => $product_id,
-            'product_post' => $product_post,
-            'base_points' => $this->product_repository->getPointsAward($product_id)
-        ];
     }
 }
