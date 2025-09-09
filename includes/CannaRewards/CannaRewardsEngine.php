@@ -16,6 +16,7 @@ use CannaRewards\Api\PageController;
 use CannaRewards\Api\ProfileController;
 use CannaRewards\Api\RedeemController;
 use CannaRewards\Api\ReferralController;
+use CannaRewards\Api\RulesController;
 use CannaRewards\Api\UnauthenticatedDataController;
 use CannaRewards\Container\DIContainer;
 use CannaRewards\Includes\DB;
@@ -75,7 +76,17 @@ final class CannaRewardsEngine {
         $v1_namespace = 'rewards/v1';
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
+        
+        // --- THIS IS THE FIX ---
+        // We make the admin permission check more robust. It will now check for a valid
+        // REST API nonce in addition to the user's capabilities. This is the standard,
+        // secure way to handle authentication for admin-area API calls.
+        $permission_admin  = function(\WP_REST_Request $request) {
+            $nonce = $request->get_header('X-WP-Nonce');
+            return wp_verify_nonce($nonce, 'wp_rest') && current_user_can('manage_options');
+        };
 
+        // Get fully wired-up objects from the container
         $auth_controller     = $this->container->get(Api\AuthController::class);
         $catalog_controller  = $this->container->get(Api\CatalogController::class);
         $claim_controller    = $this->container->get(Api\ClaimController::class);
@@ -85,10 +96,19 @@ final class CannaRewardsEngine {
         $profile_controller  = $this->container->get(Api\ProfileController::class);
         $redeem_controller   = $this->container->get(Api\RedeemController::class);
         $referral_controller = $this->container->get(Api\ReferralController::class);
+        $rules_controller    = $this->container->get(Api\RulesController::class);
         $unauth_controller   = $this->container->get(Api\UnauthenticatedDataController::class);
         $config_service      = $this->container->get(Services\ConfigService::class);
         $user_service        = $this->container->get(Services\UserService::class);
 
+        // --- ADMIN-ONLY ENDPOINTS ---
+        register_rest_route($v2_namespace, '/rules/conditions', [
+            'methods' => 'GET',
+            'callback' => [$rules_controller, 'get_conditions'],
+            'permission_callback' => $permission_admin
+        ]);
+
+        // --- PUBLIC & AUTHENTICATED ENDPOINTS ---
         register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$unauth_controller, 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_with_token'], 'permission_callback' => $permission_public]);
@@ -100,7 +120,6 @@ final class CannaRewardsEngine {
         
         register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { 
             $session_dto = $user_service->get_user_session_data(get_current_user_id());
-            // Cast the DTO to an array for the response, which will be JSON encoded.
             return \CannaRewards\Api\ApiResponse::success((array) $session_dto);
         }, 'permission_callback' => $permission_auth]);
         
