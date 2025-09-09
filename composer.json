@@ -1,25 +1,13 @@
 {
-    "name": "anwarisbased/cannarewards-engine",
-    "description": "The all-in-one, self-reliant engine for the CannaRewards PWA.",
-    "type": "wordpress-plugin",
-    "license": "GPL-2.0-or-later",
-    "require": {
-        "php-di/php-di": "^7.0"
-    },
-    "require-dev": {
-        "phpunit/phpunit": "^9.5",
-        "yoast/wp-test-utils": "^1.2"
-    },
-    "autoload": {
-        "psr-4": {
-            "CannaRewards\\": "includes/CannaRewards/"
-        },
-        "files": [
-            "includes/canna-core-functions.php"
-        ]
-    },
-    "scripts": {
-        "lint": "phpcs",
-        "test": "phpunit"
-    }
+  "name": "cannarewards-engine",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "@playwright/test": "^1.41.2",
+    "ajv": "^8.12.0",
+    "js-yaml": "^4.1.0"
+  },
+  "scripts": {
+    "test": "npx playwright test"
+  }
 }

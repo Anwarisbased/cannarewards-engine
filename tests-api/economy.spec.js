@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { validateApiContract } from './api-contract-validator.js';
 
 // Helper function to create a new user with a UNIQUE email.
 async function createTestUser(request) {
@@ -65,36 +66,28 @@ test.describe('Economy & Redemption Flow', () => {
 
     const productIdToRedeem = 204; // IMPORTANT: Product ID 2 MUST exist and have points_cost=5000
 
-    const shippingDetails = {
-      firstName: "Test",
-      lastName: "User",
-      address1: "123 Main St",
-      city: "Anytown",
-      state: "CA",
-      zip: "90210"
-    };
-
-    // --- MAKE IT LOUD ---
-    console.log(`\n--- TEST VERBOSITY ---`);
-    console.log(`Attempting redemption for product ID: ${productIdToRedeem}`);
-    console.log(`Using Auth Token: Bearer ${authToken}`);
-    console.log(`Sending Payload: ${JSON.stringify({ productId: productIdToRedeem, shippingDetails }, null, 2)}`);
-    console.log(`----------------------\n`);
-
     const redeemResponse = await request.post('/wp-json/rewards/v2/actions/redeem', {
       headers: {
         'Authorization': `Bearer ${authToken}`,
       },
       data: {
         productId: productIdToRedeem,
-        shippingDetails: shippingDetails
+        shippingDetails: {
+          firstName: "Test",
+          lastName: "User",
+          address1: "123 Main St",
+          city: "Anytown",
+          state: "CA",
+          zip: "90210"
+        }
       }
     });
     
-    expect(redeemResponse.ok(), `Redemption failed. Body: ${await redeemResponse.text()}`).toBeTruthy();
+    // --- CONTRACT ENFORCEMENT ---
+    await expect(async () => await validateApiContract(redeemResponse, '/actions/redeem', 'post')).toPass();
+
+    expect(redeemResponse.ok()).toBeTruthy();
     const redeemData = await redeemResponse.json();
-    
-    // --- THIS IS THE FIX: Corrected typo from 'redeamData' to 'redeemData' ---
     expect(redeemData.data.success).toBe(true);
     expect(redeemData.data.new_points_balance).toBe(5000);
 
@@ -103,6 +96,10 @@ test.describe('Economy & Redemption Flow', () => {
             'Authorization': `Bearer ${authToken}`,
         }
     });
+
+    // --- CONTRACT ENFORCEMENT ---
+    await expect(async () => await validateApiContract(sessionResponse, '/users/me/session', 'get')).toPass();
+
     const sessionData = await sessionResponse.json();
     expect(sessionData.data.points_balance).toBe(5000);
   });
