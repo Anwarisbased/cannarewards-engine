@@ -5,6 +5,7 @@ use CannaRewards\Includes\Event;
 use CannaRewards\Repositories\RewardCodeRepository;
 use CannaRewards\Repositories\ProductRepository;
 use Exception;
+use Psr\Container\ContainerInterface;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -26,7 +27,7 @@ class EconomyService {
     private RewardCodeRepository $reward_code_repository;
     private ProductRepository $product_repository;
     private array $policy_map = [];
-    private \CannaRewards\Container\DIContainer $container;
+    private ContainerInterface $container;
     private RankService $rankService;
 
     public function __construct(
@@ -34,7 +35,7 @@ class EconomyService {
         ContextBuilderService $context_builder,
         RewardCodeRepository $reward_code_repository,
         ProductRepository $product_repository,
-        \CannaRewards\Container\DIContainer $container,
+        ContainerInterface $container,
         array $policy_map,
         RankService $rankService
     ) {
@@ -45,6 +46,22 @@ class EconomyService {
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
+
+        // Listen for the event broadcast by the ReferralService.
+        Event::listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
+    }
+
+    /**
+     * Handles the event to grant points.
+     */
+    public function handle_grant_points_event(array $payload) {
+        if (isset($payload['user_id'], $payload['points'], $payload['description'])) {
+            $this->grant_points(
+                (int) $payload['user_id'],
+                (int) $payload['points'],
+                (string) $payload['description']
+            );
+        }
     }
 
     /**
@@ -117,7 +134,6 @@ class EconomyService {
 
     /**
      * Temporary helper to get a multiplier from a rank key.
-     * This logic will be improved when we enhance the RankDTO.
      */
     private function getRankMultiplier(string $rankKey): float {
         $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');

@@ -7,35 +7,28 @@ use CannaRewards\Admin\CustomFieldMetabox;
 use CannaRewards\Admin\ProductMetabox;
 use CannaRewards\Admin\TriggerMetabox;
 use CannaRewards\Admin\UserProfile;
-use CannaRewards\Api\AuthController;
-use CannaRewards\Api\CatalogController;
-use CannaRewards\Api\ClaimController;
-use CannaRewards\Api\HistoryController;
-use CannaRewards\Api\OrdersController;
-use CannaRewards\Api\PageController;
-use CannaRewards\Api\ProfileController;
-use CannaRewards\Api\RedeemController;
-use CannaRewards\Api\ReferralController;
-use CannaRewards\Api\RulesController;
-use CannaRewards\Api\UnauthenticatedDataController;
-use CannaRewards\Container\DIContainer;
+use CannaRewards\Api;
+use CannaRewards\Services;
 use CannaRewards\Includes\DB;
 use CannaRewards\Includes\Integrations;
-use CannaRewards\Services;
+use Psr\Container\ContainerInterface;
 
 final class CannaRewardsEngine {
     private static $instance;
-    private $container;
+    private ContainerInterface $container;
 
-    public static function instance() {
+    public static function instance(ContainerInterface $container = null) {
         if (is_null(self::$instance)) {
-            self::$instance = new self();
+            if (is_null($container)) {
+                throw new \Exception("Container not provided to CannaRewardsEngine");
+            }
+            self::$instance = new self($container);
         }
         return self::$instance;
     }
 
-    public function __construct() {
-        $this->container = new DIContainer();
+    public function __construct(ContainerInterface $container) {
+        $this->container = $container;
         add_action('plugins_loaded', [$this, 'init']);
     }
     
@@ -50,6 +43,7 @@ final class CannaRewardsEngine {
         }
 
         $this->init_wordpress_components();
+        // "Wake up" the GamificationService to ensure its event listeners are registered.
         $this->container->get(Services\GamificationService::class);
     }
     
@@ -68,7 +62,7 @@ final class CannaRewardsEngine {
         
         add_action('rest_api_init', [$this, 'register_rest_routes']);
         
-        register_activation_hook(CANNA_PLUGIN_FILE, ['CannaRewards\Includes\DB', 'activate']);
+        register_activation_hook(CANNA_PLUGIN_FILE, [DB::class, 'activate']);
     }
 
     public function register_rest_routes() {
@@ -76,66 +70,47 @@ final class CannaRewardsEngine {
         $v1_namespace = 'rewards/v1';
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
-        
-        // --- THIS IS THE FIX ---
-        // We make the admin permission check more robust. It will now check for a valid
-        // REST API nonce in addition to the user's capabilities. This is the standard,
-        // secure way to handle authentication for admin-area API calls.
         $permission_admin  = function(\WP_REST_Request $request) {
             $nonce = $request->get_header('X-WP-Nonce');
             return wp_verify_nonce($nonce, 'wp_rest') && current_user_can('manage_options');
         };
 
-        // Get fully wired-up objects from the container
-        $auth_controller     = $this->container->get(Api\AuthController::class);
-        $catalog_controller  = $this->container->get(Api\CatalogController::class);
-        $claim_controller    = $this->container->get(Api\ClaimController::class);
-        $history_controller  = $this->container->get(Api\HistoryController::class);
-        $orders_controller   = $this->container->get(Api\OrdersController::class);
-        $page_controller     = $this->container->get(Api\PageController::class);
-        $profile_controller  = $this->container->get(Api\ProfileController::class);
-        $redeem_controller   = $this->container->get(Api\RedeemController::class);
-        $referral_controller = $this->container->get(Api\ReferralController::class);
-        $rules_controller    = $this->container->get(Api\RulesController::class);
-        $unauth_controller   = $this->container->get(Api\UnauthenticatedDataController::class);
-        $config_service      = $this->container->get(Services\ConfigService::class);
-        $user_service        = $this->container->get(Services\UserService::class);
-
         // --- ADMIN-ONLY ENDPOINTS ---
         register_rest_route($v2_namespace, '/rules/conditions', [
             'methods' => 'GET',
-            'callback' => [$rules_controller, 'get_conditions'],
+            'callback' => [$this->container->get(Api\RulesController::class), 'get_conditions'],
             'permission_callback' => $permission_admin
         ]);
 
         // --- PUBLIC & AUTHENTICATED ENDPOINTS ---
-        register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$unauth_controller, 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_with_token'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/register', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_user'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/login', ['methods' => 'POST', 'callback' => [$auth_controller, 'login_user'], 'permission_callback' => $permission_public]);
-        register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$auth_controller, 'request_password_reset'], 'permission_callback' => $permission_public]);
-        register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$auth_controller, 'perform_password_reset'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$config_service, 'get_app_config'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$this->container->get(Api\UnauthenticatedDataController::class), 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_with_token'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/register', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_user'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/login', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'login_user'], 'permission_callback' => $permission_public]);
+        register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'request_password_reset'], 'permission_callback' => $permission_public]);
+        register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'perform_password_reset'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$this->container->get(Services\ConfigService::class), 'get_app_config'], 'permission_callback' => $permission_auth]);
         
-        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { 
+        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() { 
+            $user_service = $this->container->get(Services\UserService::class);
             $session_dto = $user_service->get_user_session_data(get_current_user_id());
-            return \CannaRewards\Api\ApiResponse::success((array) $session_dto);
+            return Api\ApiResponse::success((array) $session_dto);
         }, 'permission_callback' => $permission_auth]);
         
-        register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_claim'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$redeem_controller, 'process_redemption'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_claim'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$this->container->get(Api\RedeemController::class), 'process_redemption'], 'permission_callback' => $permission_auth]);
         
         register_rest_route($v2_namespace, '/users/me/profile', [
-            ['methods' => 'GET', 'callback' => [$profile_controller, 'get_profile'], 'permission_callback' => $permission_auth], 
-            ['methods' => 'POST', 'callback' => [$profile_controller, 'update_profile'], 'permission_callback' => $permission_auth]
+            ['methods' => 'GET', 'callback' => [$this->container->get(Api\ProfileController::class), 'get_profile'], 'permission_callback' => $permission_auth], 
+            ['methods' => 'POST', 'callback' => [$this->container->get(Api\ProfileController::class), 'update_profile'], 'permission_callback' => $permission_auth]
         ]);
         
-        register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$history_controller, 'get_history'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/users/me/orders', ['methods' => 'GET', 'callback' => [$orders_controller, 'get_orders'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/users/me/referrals', ['methods' => 'GET', 'callback' => [$referral_controller, 'get_my_referrals'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/catalog/products', ['methods' => 'GET', 'callback' => [$catalog_controller, 'get_products'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/catalog/products/(?P<id>[\d]+)', ['methods' => 'GET', 'callback' => [$catalog_controller, 'get_product'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/pages/(?P<slug>[a-zA-Z0-9-]+)', ['methods' => 'GET', 'callback' => [$page_controller, 'get_page'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$this->container->get(Api\HistoryController::class), 'get_history'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/users/me/orders', ['methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/users/me/referrals', ['methods' => 'GET', 'callback' => [$this->container->get(Api\ReferralController::class), 'get_my_referrals'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/catalog/products', ['methods' => 'GET', 'callback' => [$this->container->get(Api\CatalogController::class), 'get_products'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/catalog/products/(?P<id>[\d]+)', ['methods' => 'GET', 'callback' => [$this->container->get(Api\CatalogController::class), 'get_product'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/pages/(?P<slug>[a-zA-Z0-9-]+)', ['methods' => 'GET', 'callback' => [$this->container->get(Api\PageController::class), 'get_page'], 'permission_callback' => $permission_auth]);
     }
 }

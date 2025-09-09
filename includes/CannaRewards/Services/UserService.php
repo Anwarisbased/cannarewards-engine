@@ -1,13 +1,12 @@
 <?php
 namespace CannaRewards\Services;
 
-use CannaRewards\Commands\CreateUserCommand;
-use CannaRewards\Commands\UpdateProfileCommand;
 use CannaRewards\DTO\FullProfileDTO;
 use CannaRewards\DTO\RankDTO;
 use CannaRewards\DTO\SessionUserDTO;
 use CannaRewards\DTO\ShippingAddressDTO;
 use Exception;
+use Psr\Container\ContainerInterface;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -23,13 +22,13 @@ class UserService {
     private ActionLogService $action_log_service;
     private ?ReferralService $referral_service = null;
     private array $policy_map = [];
-    private \CannaRewards\Container\DIContainer $container;
+    private ContainerInterface $container;
     private RankService $rankService;
 
     public function __construct(
         CDPService $cdp_service,
         ActionLogService $action_log_service,
-        \CannaRewards\Container\DIContainer $container,
+        ContainerInterface $container,
         array $policy_map,
         RankService $rankService
     ) {
@@ -101,9 +100,6 @@ class UserService {
         return $session_dto;
     }
     
-    /**
-     * Gets the complete profile data for a user, including all custom fields.
-     */
     public function get_full_profile_data( int $user_id ): FullProfileDTO {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -132,7 +128,7 @@ class UserService {
         $profile_dto->phone_number = get_user_meta($user_id, 'phone_number', true);
         $profile_dto->referral_code = get_user_meta($user_id, '_canna_referral_code', true);
         $profile_dto->shipping_address = $shipping_dto;
-        // $profile_dto->unlocked_achievement_keys = ... // This would come from AchievementRepository in the future
+        $profile_dto->unlocked_achievement_keys = [];
         $profile_dto->custom_fields = (object) [
             'definitions' => $custom_fields_definitions,
             'values'      => (object) $custom_fields_values,
@@ -141,9 +137,6 @@ class UserService {
         return $profile_dto;
     }
 
-    /**
-     * Gets the dynamic data needed for the main user dashboard.
-     */
     public function get_user_dashboard_data( int $user_id ): array {
         return [
             'lifetime_points' => get_user_lifetime_points( $user_id ),

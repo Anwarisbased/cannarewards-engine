@@ -16,18 +16,15 @@ if ( ! defined( 'WPINC' ) ) {
  * Handles all business logic related to referrals.
  */
 class ReferralService {
-    private $economy_service;
-    private $cdp_service;
-    private $user_repository;
-    private $action_log_repository;
+    private CDPService $cdp_service;
+    private UserRepository $user_repository;
+    private ActionLogRepository $action_log_repository;
 
     public function __construct(
-        EconomyService $economy_service,
         CDPService $cdp_service,
         UserRepository $user_repository,
         ActionLogRepository $action_log_repository
     ) {
-        $this->economy_service = $economy_service;
         $this->cdp_service = $cdp_service;
         $this->user_repository = $user_repository;
         $this->action_log_repository = $action_log_repository;
@@ -74,8 +71,6 @@ class ReferralService {
      * Finds and executes all active Triggers for a given event key.
      */
     private function execute_triggers(string $event_key, int $user_id, array $context = []) {
-        // This logic is simple and can remain for now. In a larger system,
-        // this would use a TriggerRepository.
         $triggers_to_run = get_posts([
             'post_type'      => 'canna_trigger',
             'posts_per_page' => -1,
@@ -94,7 +89,13 @@ class ReferralService {
             if ($action_type === 'grant_points') {
                 $points_to_grant = (int) $action_value;
                 if ($points_to_grant > 0) {
-                    $this->economy_service->grant_points($user_id, $points_to_grant, $trigger_post->post_title);
+                    // Instead of calling EconomyService, we broadcast an event.
+                    // This fully decouples the services.
+                    Event::broadcast('points_to_be_granted', [
+                        'user_id'     => $user_id,
+                        'points'      => $points_to_grant,
+                        'description' => $trigger_post->post_title
+                    ]);
                 }
             }
         }
@@ -106,8 +107,6 @@ class ReferralService {
      * Generates a unique referral code for a new user.
      */
     public function generate_code_for_new_user( int $user_id, string $first_name = '' ): string {
-        // This logic can stay as it interacts with the UserRepository
-        global $wpdb; // A small exception, can be moved to repo later.
         $base_code_name = ! empty( $first_name ) ? $first_name : 'USER';
         $base_code      = strtoupper( substr( preg_replace( '/[^a-zA-Z0-9]/', '', $base_code_name ), 0, 8 ) );
         do {
@@ -118,5 +117,15 @@ class ReferralService {
         
         $this->user_repository->saveReferralCode($user_id, $new_code);
         return $new_code;
+    }
+
+    // Placeholder for a future feature.
+    public function get_user_referrals( int $user_id ): array {
+        return [];
+    }
+    
+    // Placeholder for a future feature.
+    public function get_nudge_options_for_referee( int $user_id, string $referee_email ): array {
+        return [];
     }
 }
