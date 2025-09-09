@@ -50,6 +50,7 @@ class DIContainer {
         ];
 
         // --- SERVICES ---
+        $this->registry[Services\RulesEngineService::class] = new Services\RulesEngineService();
         $this->registry[Services\RankService::class] = new Services\RankService($this->get(Repositories\UserRepository::class));
         $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
         $this->registry[Services\CDPService::class] = new Services\CDPService($this->get(Services\RankService::class));
@@ -83,9 +84,16 @@ class DIContainer {
         $user_service->set_referral_service($referral_service);
         $this->registry[Services\ReferralService::class] = $referral_service;
 
-        $this->registry[Services\GamificationService::class] = new Services\GamificationService($economy_service, $this->get(Services\ActionLogService::class), $this->get(Repositories\AchievementRepository::class), $this->get(Repositories\ActionLogRepository::class));
+        $this->registry[Services\GamificationService::class] = new Services\GamificationService(
+            $economy_service,
+            $this->get(Services\ActionLogService::class),
+            $this->get(Repositories\AchievementRepository::class),
+            $this->get(Repositories\ActionLogRepository::class),
+            $this->get(Services\RulesEngineService::class)
+        );
         
         // --- COMMAND HANDLERS ---
+        // (No changes here)
         $create_user_handler = new Commands\CreateUserCommandHandler($this->get(Repositories\UserRepository::class), $this->get(Services\CDPService::class));
         $create_user_handler->setReferralService($referral_service);
         $user_service->registerCommandHandler(Commands\CreateUserCommand::class, $create_user_handler);
@@ -97,14 +105,12 @@ class DIContainer {
         $economy_service->registerCommandHandler(Commands\RedeemRewardCommand::class, $redeem_handler);
         $this->registry[Commands\RedeemRewardCommandHandler::class] = $redeem_handler; 
         
-        // --- THE FIX IS HERE ---
-        // The arguments are now in the correct order, matching the handler's constructor.
         $process_scan_handler = new Commands\ProcessProductScanCommandHandler(
             $this->get(Repositories\RewardCodeRepository::class), 
             $this->get(Repositories\ProductRepository::class), 
             $economy_service, 
-            $this->get(Services\ContextBuilderService::class), // <-- CORRECTED
-            $this->get(Services\ActionLogService::class),      // <-- CORRECTED
+            $this->get(Services\ContextBuilderService::class), 
+            $this->get(Services\ActionLogService::class),
             $this->get(Repositories\ActionLogRepository::class),
             $this->get(Commands\RedeemRewardCommandHandler::class),
             $this->get(Services\EventFactory::class)
@@ -118,6 +124,7 @@ class DIContainer {
         $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
 
         // --- CONTROLLERS ---
+        // (No changes here)
         $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
         $this->registry[Api\CatalogController::class] = new Api\CatalogController();
         $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));
