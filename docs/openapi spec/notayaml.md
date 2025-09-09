@@ -109,6 +109,23 @@ components:
             type: string
           example: ["limited", "new"]
 
+    Order:
+      type: object
+      description: "Represents a single redeemed order."
+      properties:
+        orderId:
+          type: integer
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        items:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+
     SessionUser:
       type: object
       description: "A lightweight object representing the core data for an authenticated user's session."
@@ -183,6 +200,16 @@ components:
         referralCode: { type: string, description: "Optional referral code from another user." }
         claimCode: { type: string, description: "Optional QR code from a product scan during unauthenticated registration." }
 
+    # --- Generic Response Schemas ---
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
     # --- Error Schemas ---
     Error:
       type: object
@@ -220,11 +247,14 @@ components:
       content:
         application/json:
           schema:
-            type: object
-            properties:
-              success: { type: boolean, example: true }
-              message: { type: string }
-              userId: { type: integer }
+            allOf:
+              - $ref: '#/components/schemas/SuccessResponse'
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      userId: { type: integer }
 
 #--------------------------------
 # Paths (API Endpoints)
@@ -243,21 +273,26 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  settings:
-                    type: object
-                    description: "Brand personality and theme settings."
-                  all_ranks:
-                    type: object
-                    description: "A dictionary of all available ranks, keyed by rank key."
-                    additionalProperties:
-                      $ref: '#/components/schemas/Rank'
-                  all_achievements:
-                    type: object
-                    description: "A dictionary of all available achievements, keyed by achievement key."
-                    additionalProperties:
-                      $ref: '#/components/schemas/Achievement'
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          settings:
+                            type: object
+                            description: "Brand personality and theme settings."
+                          all_ranks:
+                            type: object
+                            description: "A dictionary of all available ranks, keyed by rank key."
+                            additionalProperties:
+                              $ref: '#/components/schemas/Rank'
+                          all_achievements:
+                            type: object
+                            description: "A dictionary of all available achievements, keyed by achievement key."
+                            additionalProperties:
+                              $ref: '#/components/schemas/Achievement'
         '401': { $ref: '#/components/responses/UnauthorizedError' }
 
   /users/me/session:
@@ -269,7 +304,39 @@ paths:
       responses:
         '200':
           description: OK
-          content: { application/json: { schema: { $ref: '#/components/schemas/SessionUser' } } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SessionUser'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me/orders:
+    get:
+      tags: [User Profile & Data]
+      summary: Get User's Redeemed Orders
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          orders:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Order'
         '401': { $ref: '#/components/responses/UnauthorizedError' }
 
   # User Profile & Data
@@ -364,28 +431,6 @@ paths:
                   all_rewards: { type: array, items: { $ref: '#/components/schemas/RewardProduct' } }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
 
-  /wishlist:
-    post:
-      tags: [Economy]
-      summary: Add to Wishlist
-      security: [ { bearerAuth: [] } ]
-      requestBody: { content: { application/json: { schema: { properties: { productId: { type: integer } } } } } }
-      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/UnauthorizedError' } }
-    delete:
-      tags: [Economy]
-      summary: Remove from Wishlist
-      security: [ { bearerAuth: [] } ]
-      requestBody: { content: { application/json: { schema: { properties: { productId: { type: integer } } } } } }
-      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/UnauthorizedError' } }
-          
-  /wishlist/set-goal:
-    post:
-      tags: [Economy]
-      summary: Set Active Goal
-      security: [ { bearerAuth: [] } ]
-      requestBody: { content: { application/json: { schema: { properties: { productId: { type: integer } } } } } }
-      responses: { '200': { description: OK }, '401': { $ref: '#/components/responses/UnauthorizedError' } }
-
   # Actions
   /actions/claim:
     post:
@@ -408,12 +453,16 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean, example: true }
-                  message: { type: string, example: "You earned 400 points!" }
-                  points_earned: { type: integer, example: 400 }
-                  new_points_balance: { type: integer, example: 1650 }
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "You earned 400 points!" }
+                          points_earned: { type: integer, example: 400 }
+                          new_points_balance: { type: integer, example: 1650 }
         '400': { $ref: '#/components/responses/BadRequestError' }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '404': { $ref: '#/components/responses/NotFoundError' }
@@ -439,14 +488,53 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  success: { type: boolean, example: true }
-                  order_id: { type: integer, example: 12345 }
-                  new_points_balance: { type: integer, example: 800 }
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          order_id: { type: integer, example: 12345 }
+                          new_points_balance: { type: integer, example: 800 }
         '401': { $ref: '#/components/responses/UnauthorizedError' }
         '402': { description: Insufficient points. }
         '403': { $ref: '#/components/responses/ForbiddenError' }
+  
+  /unauthenticated/claim:
+    post:
+      tags: [Actions]
+      summary: Process an Unauthenticated Product Scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: Code is valid, registration is required.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status: { type: string, example: 'registration_required' }
+                          registration_token: { type: string }
+                          reward_preview:
+                            type: object
+                            properties:
+                              id: { type: integer }
+                              name: { type: string }
+                              image: { type: string, format: uri }
 
   # Pages
   /pages/{slug}:
@@ -484,6 +572,36 @@ paths:
         '201': { $ref: '#/components/responses/CreatedSuccess' }
         '409': { $ref: '#/components/responses/ConflictError' }
         '400': { $ref: '#/components/responses/BadRequestError' }
+
+  /auth/register-with-token:
+    post:
+      tags: [Authentication]
+      summary: Register user with a claim token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                agreedToTerms: { type: boolean }
+                registration_token: { type: string }
+      responses:
+        '200':
+          description: Registration successful, JWT returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user_email: { type: string, format: email }
+                  user_display_name: { type: string }
+                  user_nicename: { type: string }
 
   /auth/login:
     post:

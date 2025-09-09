@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { validateApiContract } from './api-contract-validator.js';
 
 const TEST_CODE = 'PWT-001-C03C2878'; // Replace with a real code from your CSV
 
@@ -16,6 +17,7 @@ test.describe('User Onboarding Golden Path', () => {
     const unauthenticatedClaim = await request.post('/wp-json/rewards/v2/unauthenticated/claim', {
       data: { code: TEST_CODE }
     });
+    await expect(async () => await validateApiContract(unauthenticatedClaim, '/unauthenticated/claim', 'post')).toPass();
     expect(unauthenticatedClaim.ok(), `Unauthenticated claim failed. Body: ${await unauthenticatedClaim.text()}`).toBeTruthy();
     const claimData = await unauthenticatedClaim.json();
     expect(claimData.data.status).toBe('registration_required');
@@ -32,6 +34,7 @@ test.describe('User Onboarding Golden Path', () => {
         registration_token: registrationToken
       }
     });
+    await expect(async () => await validateApiContract(registration, '/auth/register-with-token', 'post')).toPass();
     expect(registration.ok(), `Registration with token failed. Body: ${await registration.text()}`).toBeTruthy();
     const registrationData = await registration.json();
     const authToken = registrationData.token;
@@ -39,6 +42,7 @@ test.describe('User Onboarding Golden Path', () => {
     const ordersResponse = await request.get('/wp-json/rewards/v2/users/me/orders', {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
+    await expect(async () => await validateApiContract(ordersResponse, '/users/me/orders', 'get')).toPass();
     expect(ordersResponse.ok(), `Fetching orders failed. Body: ${await ordersResponse.text()}`).toBeTruthy();
     const ordersData = await ordersResponse.json();
     

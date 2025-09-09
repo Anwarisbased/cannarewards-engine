@@ -28,9 +28,7 @@ class OrderRepository {
         try {
             $order = wc_create_order(['customer_id' => $user_id]);
             
-            // --- THIS IS THE FIX: BE LOUD ---
             if (is_wp_error($order)) {
-                // Throw the actual, detailed error message from WooCommerce.
                 throw new Exception('wc_create_order() failed. WooCommerce said: ' . $order->get_error_message());
             }
 
@@ -60,7 +58,6 @@ class OrderRepository {
             return $order_id;
 
         } catch (Exception $e) {
-            // Re-throw the exception so the handler above can catch the detailed message.
             throw new Exception('Exception during order creation process: ' . $e->getMessage());
         }
     }
@@ -103,7 +100,9 @@ class OrderRepository {
 
             $formatted_orders[] = [
                 'orderId'   => $order->get_id(),
-                'date'      => $order->get_date_created()->date('F j, Y'),
+                // --- THIS IS THE FIX ---
+                // The OpenAPI spec expects a 'YYYY-MM-DD' format. We change the PHP date format to match.
+                'date'      => $order->get_date_created()->date('Y-m-d'),
                 'status'    => ucfirst($order->get_status()),
                 'items'     => implode(', ', $items),
                 'imageUrl'  => $image_url,
