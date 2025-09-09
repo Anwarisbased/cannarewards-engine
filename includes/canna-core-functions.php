@@ -42,90 +42,20 @@ function get_user_lifetime_points($user_id) {
 }
 
 /**
- * Retrieves the defined rank structure from the 'canna_rank' Custom Post Type.
- *
- * Queries all 'canna_rank' posts, formats them into a structured array,
- * adds the default 'Member' rank, and sorts them by points requirement in descending order.
- * The results are cached in a transient for performance and invalidated when ranks are updated.
- *
- * @since 5.0.0
- *
- * @return array An associative array of rank data, keyed by rank slug.
+ * @deprecated 2.1.0 Use CannaRewards\Services\RankService->getRankStructure() instead.
  */
 function canna_get_rank_structure() {
-    $cached_ranks = get_transient('canna_rank_structure');
-    if (false !== $cached_ranks && is_array($cached_ranks)) {
-        return $cached_ranks;
-    }
-
-    $ranks_for_api = [];
-    $args          = [
-        'post_type'      => 'canna_rank',
-        'posts_per_page' => -1,
-        'meta_key'       => 'points_required',
-        'orderby'        => 'meta_value_num',
-        'order'          => 'DESC',
-    ];
-    $rank_posts    = new WP_Query($args);
-
-    if ($rank_posts->have_posts()) {
-        while ($rank_posts->have_posts()) {
-            $rank_posts->the_post();
-            $post_id       = get_the_ID();
-            $key           = get_post_field('post_name', $post_id);
-            $benefits_text = get_post_meta($post_id, 'benefits', true);
-            $benefits      = [];
-            if (!empty($benefits_text)) {
-                $benefits = preg_split('/\\r\\n|\\r|\\n/', $benefits_text, -1, PREG_SPLIT_NO_EMPTY);
-            }
-            $ranks_for_api[$key] = [
-                'name'     => get_the_title(),
-                'points'   => (int) get_post_meta($post_id, 'points_required', true),
-                'benefits' => $benefits,
-            ];
-        }
-    }
-    wp_reset_postdata();
-
-    // Manually add the base 'Member' rank.
-    $ranks_for_api['member'] = [
-        'name'     => 'Member',
-        'points'   => 0,
-        'benefits' => ['Earn points on every scan to start unlocking rewards.'],
-    ];
-
-    uasort(
-        $ranks_for_api,
-        function ($a, $b) {
-            return $b['points'] - $a['points'];
-        }
-    );
-
-    set_transient('canna_rank_structure', $ranks_for_api, 12 * HOUR_IN_SECONDS);
-
-    return $ranks_for_api;
+    trigger_error('canna_get_rank_structure() is deprecated. Use RankService->getRankStructure() instead.', E_USER_DEPRECATED);
+    // Return a default empty array to avoid breaking anything that might still call this.
+    return [];
 }
 
 /**
- * Determines the current rank of a user based on their lifetime points.
- *
- * @since 5.0.0
- *
- * @param int $user_id The ID of the user.
- * @return array An array containing the 'key' (slug) and 'name' of the user's current rank.
+ * @deprecated 2.1.0 Use CannaRewards\Services\RankService->getUserRank() instead.
  */
 function get_user_current_rank($user_id) {
-    $lifetime_points = get_user_lifetime_points($user_id);
-    $ranks           = canna_get_rank_structure();
-
-    // Iterate through ranks (from highest to lowest) and return the first one the user qualifies for.
-    foreach ($ranks as $rank_key => $rank_data) {
-        if ($lifetime_points >= $rank_data['points']) {
-            return ['key' => $rank_key, 'name' => $rank_data['name']];
-        }
-    }
-
-    // Default fallback rank if something goes wrong or no ranks are defined.
+    trigger_error('get_user_current_rank() is deprecated. Use RankService->getUserRank() instead.', E_USER_DEPRECATED);
+    // Return a default member rank to avoid breaking anything that might still call this.
     return ['key' => 'member', 'name' => 'Member'];
 }
 

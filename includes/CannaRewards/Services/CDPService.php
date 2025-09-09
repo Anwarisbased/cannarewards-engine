@@ -12,6 +12,13 @@ if ( ! defined( 'WPINC' ) ) {
  * The single, centralized gateway for all communication to the Customer Data Platform.
  */
 class CDPService {
+
+    private RankService $rankService;
+
+    public function __construct(RankService $rankService) {
+        $this->rankService = $rankService;
+    }
+
     /**
      * The single entry point for tracking all events.
      */
@@ -31,6 +38,8 @@ class CDPService {
             return [];
         }
 
+        $rank_dto = $this->rankService->getUserRank($user_id);
+
         return [
             'identity' => [
                 'user_id'    => $user_id,
@@ -43,8 +52,8 @@ class CDPService {
                 'lifetime_points' => get_user_lifetime_points( $user_id ),
             ],
             'status' => [
-                'rank_key' => get_user_current_rank( $user_id )['key'] ?? 'member',
-                'rank_name' => get_user_current_rank( $user_id )['name'] ?? 'Member',
+                'rank_key' => $rank_dto->key,
+                'rank_name' => $rank_dto->name,
             ]
         ];
     }

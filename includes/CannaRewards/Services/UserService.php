@@ -16,23 +16,26 @@ if ( ! defined( 'WPINC' ) ) {
  * User Service (Command Bus & Data Fetcher)
  */
 class UserService {
-    private $command_map = [];
-    private $cdp_service;
-    private $action_log_service;
-    private $referral_service;
-    private $policy_map = []; // The map of Command => [Policies]
-    private $container;     // The DI container to build policies
+    private array $command_map = [];
+    private CDPService $cdp_service;
+    private ActionLogService $action_log_service;
+    private ?ReferralService $referral_service = null;
+    private array $policy_map = [];
+    private \CannaRewards\Container\DIContainer $container;
+    private RankService $rankService;
 
     public function __construct(
         CDPService $cdp_service,
         ActionLogService $action_log_service,
-        \CannaRewards\Container\DIContainer $container, // Inject the container
-        array $policy_map = []                         // Inject the policy map
+        \CannaRewards\Container\DIContainer $container,
+        array $policy_map,
+        RankService $rankService
     ) {
         $this->cdp_service = $cdp_service;
         $this->action_log_service = $action_log_service;
         $this->container = $container;
         $this->policy_map = $policy_map;
+        $this->rankService = $rankService;
     }
 
     public function set_referral_service(ReferralService $referral_service): void {
@@ -46,7 +49,6 @@ class UserService {
     public function handle($command) {
         $command_class = get_class($command);
         
-        // --- THE GAUNTLET ---
         $policies_for_command = $this->policy_map[$command_class] ?? [];
         foreach ($policies_for_command as $policy_class) {
             $policy = $this->container->get($policy_class);
@@ -65,17 +67,18 @@ class UserService {
         return $handler->handle($command);
     }
     
+    /**
+     * Gets the minimal, lightweight data needed for an authenticated session.
+     *
+     * @return SessionUserDTO A strongly-typed object instead of a magic array.
+     */
     public function get_user_session_data( int $user_id ): SessionUserDTO {
         $user = get_userdata($user_id);
         if (!$user) {
             throw new Exception("User with ID {$user_id} not found.");
         }
 
-        $rank_data = get_user_current_rank($user_id);
-
-        $rank_dto = new RankDTO();
-        $rank_dto->key = $rank_data['key'] ?? 'member';
-        $rank_dto->name = $rank_data['name'] ?? 'Member';
+        $rank_dto = $this->rankService->getUserRank($user_id);
 
         $shipping_address = [
             'shipping_first_name' => get_user_meta($user_id, 'shipping_first_name', true),
@@ -101,6 +104,9 @@ class UserService {
         return $session_dto;
     }
     
+    /**
+     * Gets the complete profile data for a user, including all custom fields.
+     */
     public function get_full_profile_data( int $user_id ): array {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -138,6 +144,9 @@ class UserService {
         ];
     }
 
+    /**
+     * Gets the dynamic data needed for the main user dashboard.
+     */
     public function get_user_dashboard_data( int $user_id ): array {
         return [
             'lifetime_points' => get_user_lifetime_points( $user_id ),

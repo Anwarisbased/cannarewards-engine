@@ -13,6 +13,12 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class ConfigService {
 
+    private RankService $rankService;
+
+    public function __construct(RankService $rankService) {
+        $this->rankService = $rankService;
+    }
+
     /**
      * Assembles the complete application configuration object.
      */
@@ -54,7 +60,18 @@ class ConfigService {
      * Fetches and formats all defined Rank CPTs.
      */
     private function get_all_ranks(): array {
-        return canna_get_rank_structure();
+        $rank_dtos = $this->rankService->getRankStructure();
+        // The API contract expects an associative array, keyed by the rank's machine-name.
+        $ranks_for_api = [];
+        foreach ($rank_dtos as $dto) {
+            // The OpenAPI spec benefits property is currently not in the RankDTO,
+            // so we will have to add it or fetch it here. For now, we will add a placeholder.
+            // This is something we can clean up in the next refactor.
+            $rank_array = (array) $dto;
+            $rank_array['benefits'] = []; // Add placeholder for benefits
+            $ranks_for_api[$dto->key] = $rank_array;
+        }
+        return $ranks_for_api;
     }
 
     /**

@@ -19,22 +19,24 @@ if ( ! defined( 'WPINC' ) ) {
  * to modify a user's points balance.
  */
 class EconomyService {
-    private $action_log_service;
-    private $context_builder;
-    private $user_service;
-    private $command_map = []; // The map of Command => Handler
-    private $reward_code_repository;
-    private $product_repository;
-    private $policy_map = []; // The map of Command => [Policies]
-    private $container;     // The DI container to build policies
+    private ActionLogService $action_log_service;
+    private ContextBuilderService $context_builder;
+    private ?UserService $user_service = null;
+    private array $command_map = [];
+    private RewardCodeRepository $reward_code_repository;
+    private ProductRepository $product_repository;
+    private array $policy_map = [];
+    private \CannaRewards\Container\DIContainer $container;
+    private RankService $rankService;
 
     public function __construct(
         ActionLogService $action_log_service,
         ContextBuilderService $context_builder,
         RewardCodeRepository $reward_code_repository,
         ProductRepository $product_repository,
-        \CannaRewards\Container\DIContainer $container, // Inject the container
-        array $policy_map = []                         // Inject the policy map
+        \CannaRewards\Container\DIContainer $container,
+        array $policy_map,
+        RankService $rankService
     ) {
         $this->action_log_service = $action_log_service;
         $this->context_builder    = $context_builder;
@@ -42,6 +44,7 @@ class EconomyService {
         $this->product_repository = $product_repository;
         $this->container = $container;
         $this->policy_map = $policy_map;
+        $this->rankService = $rankService;
     }
 
     /**
@@ -65,14 +68,12 @@ class EconomyService {
         $command_class = get_class($command);
 
         // --- THE GAUNTLET ---
-        // Before handling, run all registered policies for this command.
         $policies_for_command = $this->policy_map[$command_class] ?? [];
         foreach ($policies_for_command as $policy_class) {
             $policy = $this->container->get($policy_class);
-            $policy->check($command); // This will throw an exception if a rule fails.
+            $policy->check($command);
         }
 
-        // If we get here, all policies passed. It's safe to proceed.
         if (!isset($this->command_map[$command_class])) {
             throw new Exception("No handler registered for command: {$command_class}");
         }
@@ -84,8 +85,8 @@ class EconomyService {
      * Grants points to a user. This remains a core utility method.
      */
     public function grant_points( int $user_id, int $base_points, string $description, float $temp_multiplier = 1.0 ): array {
-        $user_rank        = get_user_current_rank( $user_id );
-        $rank_multiplier  = (float) ( $user_rank['multiplier'] ?? 1.0 );
+        $user_rank_dto    = $this->rankService->getUserRank($user_id);
+        $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
         $final_multiplier = max( $rank_multiplier, $temp_multiplier );
         $points_to_grant  = floor( $base_points * $final_multiplier );
 
@@ -115,18 +116,37 @@ class EconomyService {
     }
 
     /**
+     * Temporary helper to get a multiplier from a rank key.
+     * This logic will be improved when we enhance the RankDTO.
+     */
+    private function getRankMultiplier(string $rankKey): float {
+        $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');
+        if ($rank_post) {
+            $multiplier = get_post_meta($rank_post->ID, 'point_multiplier', true);
+            return !empty($multiplier) ? (float) $multiplier : 1.0;
+        }
+        return 1.0;
+    }
+
+
+    /**
      * Checks for rank transitions.
      */
     private function check_and_apply_rank_transition( int $user_id ) {
         $current_rank_key = get_user_meta( $user_id, '_canna_current_rank_key', true ) ?: 'member';
         
-        $new_rank_data = get_user_current_rank( $user_id );
-        $new_rank_key = $new_rank_data['key'];
+        $new_rank_dto = $this->rankService->getUserRank($user_id);
+        $new_rank_key = $new_rank_dto->key;
 
         if ( $new_rank_key !== $current_rank_key ) {
             update_user_meta( $user_id, '_canna_current_rank_key', $new_rank_key );
             
-            $all_ranks = canna_get_rank_structure();
+            $all_ranks_dtos = $this->rankService->getRankStructure();
+            $all_ranks = array_reduce($all_ranks_dtos, function ($carry, $item) {
+                $carry[$item->key] = (array) $item;
+                return $carry;
+            }, []);
+            
             $old_rank_object = $all_ranks[ $current_rank_key ] ?? null;
             $new_rank_object = $all_ranks[ $new_rank_key ] ?? null;
             
