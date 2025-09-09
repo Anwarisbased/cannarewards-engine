@@ -1,0 +1,13 @@
+ADR 009: Decoupling HTTP Logic with Responders
+Status: Proposed
+Context:
+Currently, API controllers are responsible for creating WP_REST_Response and WP_Error objects. This couples the application's business logic outcomes to the specifics of the HTTP layer (e.g., status codes, headers). This leads to minor inconsistencies and makes the controllers harder to test in isolation.
+Decision:
+We will implement the Responder Pattern. Controllers will no longer return WordPress response objects. Instead, they will return simple, dedicated "Responder" objects that represent a specific outcome (e.g., ResourceCreatedResponder, ValidationFailedResponder, NotFoundResponder). A thin middleware layer in the REST API bootstrap will be responsible for taking these Responder objects and converting them into the final WP_REST_Response.
+Consequences:
+Positive:
+Perfect API Consistency: A NotFoundResponder will always generate the exact same 404 Not Found response, with the same JSON structure, regardless of which controller returned it. This strengthens the API contract.
+Decoupled and Testable Controllers: Controllers now only contain application logic. They are no longer concerned with HTTP status codes, making them simpler and easier to unit test.
+Clearer Application Flow: The return type of a controller method explicitly states the possible outcomes of the action.
+Negative:
+Increased Indirection: This adds another layer of abstraction between the controller and the final HTTP response.

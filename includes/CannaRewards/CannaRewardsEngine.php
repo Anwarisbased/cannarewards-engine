@@ -99,11 +99,17 @@ final class CannaRewardsEngine {
         register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$auth_controller, 'request_password_reset'], 'permission_callback' => $permission_public]);
         register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$auth_controller, 'perform_password_reset'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$config_service, 'get_app_config'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { return $user_service->get_user_session_data(get_current_user_id()); }, 'permission_callback' => $permission_auth]);
+        
+        // --- THIS IS THE FIX ---
+        // We now wrap the response in ApiResponse::success to ensure a consistent API structure.
+        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { 
+            $session_data = $user_service->get_user_session_data(get_current_user_id());
+            return \CannaRewards\Api\ApiResponse::success($session_data);
+        }, 'permission_callback' => $permission_auth]);
+        
         register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_claim'], 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$redeem_controller, 'process_redemption'], 'permission_callback' => $permission_auth]);
         
-        // --- THIS IS THE FIX for the recurring notice ---
         register_rest_route($v2_namespace, '/users/me/profile', [
             [
                 'methods'             => 'GET', 

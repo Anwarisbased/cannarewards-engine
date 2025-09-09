@@ -67,20 +67,22 @@ final class DIContainer {
         $update_user_handler = new Commands\UpdateProfileCommandHandler($this->get(Services\ActionLogService::class), $this->get(Services\CDPService::class), $this->get(Repositories\UserRepository::class));
         $user_service->registerCommandHandler(Commands\UpdateProfileCommand::class, $update_user_handler);
         
-        // --- START FIX: Add the ActionLogRepository as a dependency for the handler ---
+        $redeem_handler = new Commands\RedeemRewardCommandHandler($this->get(Repositories\ProductRepository::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\OrderRepository::class), $this->get(Services\ActionLogService::class), $this->get(Services\ContextBuilderService::class), $this->get(Repositories\ActionLogRepository::class));
+        $economy_service->registerCommandHandler(Commands\RedeemRewardCommand::class, $redeem_handler);
+        
+        // --- THIS IS THE FIX: We need the redeem handler to be available for the scan handler ---
+        $this->registry[Commands\RedeemRewardCommandHandler::class] = $redeem_handler; 
+        
         $process_scan_handler = new Commands\ProcessProductScanCommandHandler(
             $this->get(Repositories\RewardCodeRepository::class), 
             $this->get(Repositories\ProductRepository::class), 
             $economy_service, 
             $this->get(Services\ContextBuilderService::class), 
             $this->get(Services\ActionLogService::class),
-            $this->get(Repositories\ActionLogRepository::class) // <-- ADD THIS
+            $this->get(Repositories\ActionLogRepository::class),
+            $this->get(Commands\RedeemRewardCommandHandler::class) // <-- INJECT THE DEPENDENCY
         );
-        // --- END FIX ---
         $economy_service->registerCommandHandler(Commands\ProcessProductScanCommand::class, $process_scan_handler);
-        
-        $redeem_handler = new Commands\RedeemRewardCommandHandler($this->get(Repositories\ProductRepository::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\OrderRepository::class), $this->get(Services\ActionLogService::class), $this->get(Services\ContextBuilderService::class), $this->get(Repositories\ActionLogRepository::class));
-        $economy_service->registerCommandHandler(Commands\RedeemRewardCommand::class, $redeem_handler);
         
         $process_unauth_claim_handler = new Commands\ProcessUnauthenticatedClaimCommandHandler($this->get(Repositories\RewardCodeRepository::class), $this->get(Repositories\ProductRepository::class));
         $economy_service->registerCommandHandler(Commands\ProcessUnauthenticatedClaimCommand::class, $process_unauth_claim_handler);

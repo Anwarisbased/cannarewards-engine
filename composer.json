@@ -3,17 +3,12 @@
     "description": "The all-in-one, self-reliant engine for the CannaRewards PWA.",
     "type": "wordpress-plugin",
     "license": "GPL-2.0-or-later",
-    "authors": [
-        {
-            "name": "Anwar Isbased",
-            "email": "email@example.com"
-        }
-    ],
-    "minimum-stability": "dev",
+    "require": {
+        "php-di/php-di": "^7.0"
+    },
     "require-dev": {
-        "squizlabs/php_codesniffer": "*",
-        "wp-coding-standards/wpcs": "^3.0",
-        "phpcompatibility/phpcompatibility-wp": "^2.1"
+        "phpunit/phpunit": "^9.5",
+        "yoast/wp-test-utils": "^1.2"
     },
     "autoload": {
         "psr-4": {
@@ -25,11 +20,6 @@
     },
     "scripts": {
         "lint": "phpcs",
-        "lint-fix": "phpcbf"
-    },
-    "config": {
-        "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true
-        }
+        "test": "phpunit"
     }
 }

@@ -3,7 +3,7 @@
         'name' => 'anwarisbased/cannarewards-engine',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '38623f470960dbe28928e996610b156c2072f726',
+        'reference' => 'f458f3c20e1431e2229cd591b7c2cbe0eae45b59',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'anwarisbased/cannarewards-engine' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '38623f470960dbe28928e996610b156c2072f726',
+            'reference' => 'f458f3c20e1431e2229cd591b7c2cbe0eae45b59',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),

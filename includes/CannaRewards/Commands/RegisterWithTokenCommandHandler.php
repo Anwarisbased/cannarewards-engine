@@ -4,9 +4,7 @@ namespace CannaRewards\Commands;
 use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Services\EconomyService;
 use CannaRewards\Services\UserService;
-// --- START: ADD THIS IMPORT ---
 use CannaRewards\Commands\ProcessProductScanCommand;
-// --- END: ADD THIS IMPORT ---
 use Exception;
 
 final class RegisterWithTokenCommandHandler {
@@ -40,35 +38,30 @@ final class RegisterWithTokenCommandHandler {
             throw new Exception('Failed to create user during token registration.');
         }
 
-        // --- START: REFACTORED CLAIM LOGIC ---
         // 2. Now that the user exists, dispatch the standard ProcessProductScanCommand.
-        // This ensures the scan goes through the SAME logic as an authenticated user's scan,
-        // which includes our new "is this a first scan?" check.
         $process_scan_command = new ProcessProductScanCommand($new_user_id, $claim_code);
         $this->economy_service->handle($process_scan_command);
-        // --- END: REFACTORED CLAIM LOGIC ---
 
         // 3. All successful, delete the token so it can't be reused.
         delete_transient('reg_token_' . $command->registration_token);
         
-        // 4. Return JWT for auto-login.
-        $token = '';
-        // This is a temporary measure, ideally you'd get this from the login service
-        if (function_exists('jwt_auth_create_token')) {
-            $user = get_user_by('ID', $new_user_id);
-            if ($user) {
-                // Manually create a token since we are bypassing the normal login flow.
-                // We need to simulate the response the JWT plugin would give.
-                $payload = [
-                    'token'             => \JWT_Auth\Token::create($user->ID),
-                    'user_email'        => $user->user_email,
-                    'user_nicename'     => $user->user_nicename,
-                    'user_display_name' => $user->display_name,
-                ];
-                 return ['success' => true, 'token' => $payload['token']];
-            }
+        // --- THE ROBUST FIX ---
+        // 4. Instead of manually creating a token, we make an internal REST request
+        // to the official JWT login endpoint. This is guaranteed to work if the plugin is active.
+        $request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
+        $request->set_body_params([
+            'username' => $command->email,
+            'password' => $command->password
+        ]);
+
+        $response = rest_do_request($request);
+
+        if ($response->is_error()) {
+            // If the internal login fails for any reason, we throw.
+            throw new Exception('Could not generate authentication token after registration.');
         }
 
-        return ['success' => true, 'token' => null];
+        // The response from rest_do_request is exactly what we need to return.
+        return $response->get_data();
     }
 }

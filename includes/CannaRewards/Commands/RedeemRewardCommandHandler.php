@@ -63,7 +63,25 @@ final class RedeemRewardCommandHandler {
         $required_rank = $this->product_repository->getRequiredRank($product_id);
         if ($required_rank) { /* Future rank check logic */ }
 
-        $order_id = $this->order_repository->createFromRedemption($user_id, $product_id, $command->shipping_details);
+        // --- THIS IS THE FIX ---
+        // Map the incoming camelCase JSON keys to the snake_case keys WooCommerce expects.
+        // Also, add default values for fields WooCommerce requires, like country.
+        $user_data = get_userdata($user_id);
+        $address_for_order = [];
+        if (!empty($command->shipping_details)) {
+            $address_for_order = [
+                'first_name' => $command->shipping_details['firstName'] ?? '',
+                'last_name'  => $command->shipping_details['lastName'] ?? '',
+                'address_1'  => $command->shipping_details['address1'] ?? '',
+                'city'       => $command->shipping_details['city'] ?? '',
+                'state'      => $command->shipping_details['state'] ?? '',
+                'postcode'   => $command->shipping_details['zip'] ?? '',
+                'country'    => 'US', // Default country, as it's often required.
+                'email'      => $user_data->user_email,
+            ];
+        }
+
+        $order_id = $this->order_repository->createFromRedemption($user_id, $product_id, $address_for_order);
         if (!$order_id) throw new Exception('Failed to create order for redemption.');
 
         if (!empty($command->shipping_details)) {

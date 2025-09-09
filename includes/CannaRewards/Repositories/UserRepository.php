@@ -99,6 +99,8 @@ class UserRepository {
             return;
         }
 
+        // --- THIS IS THE FIX ---
+        // Map the incoming camelCase keys to the correct snake_case meta keys.
         $meta_map = [
             'firstName' => 'shipping_first_name',
             'lastName'  => 'shipping_last_name',
@@ -113,5 +115,9 @@ class UserRepository {
                 update_user_meta($user_id, $meta_key, sanitize_text_field($shipping_details[$frontend_key]));
             }
         }
+        
+        // Also save to the primary billing fields for better WC compatibility
+        update_user_meta( $user_id, 'billing_first_name', sanitize_text_field( $shipping_details['firstName'] ?? '' ) );
+        update_user_meta( $user_id, 'billing_last_name', sanitize_text_field( $shipping_details['lastName'] ?? '' ) );
     }
 }
