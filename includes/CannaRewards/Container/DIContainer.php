@@ -3,21 +3,17 @@ namespace CannaRewards\Container;
 
 use CannaRewards\Repositories;
 use CannaRewards\Services;
-use CannaRewards\Commands; // This is the ONLY 'use' statement we need for commands and handlers
+use CannaRewards\Commands;
+use CannaRewards\Policies; // <-- Import Policies
 use CannaRewards\Api;
 
-/**
- * A simple, manual Dependency Injection Container.
- * Its only job is to build and wire up all the application's objects.
- */
-final class DIContainer {
+class DIContainer {
     private $registry = [];
 
     public function __construct() {
         $this->bootstrap();
     }
 
-    /** Helper to get an object from the registry */
     public function get(string $class_name) {
         if (!isset($this->registry[$class_name])) {
             throw new \Exception("Service not found in container: " . $class_name);
@@ -26,7 +22,7 @@ final class DIContainer {
     }
 
     private function bootstrap(): void {
-        // --- PHASE 1: REPOSITORIES ---
+        // --- REPOSITORIES ---
         $this->registry[Repositories\ActionLogRepository::class] = new Repositories\ActionLogRepository();
         $this->registry[Repositories\AchievementRepository::class] = new Repositories\AchievementRepository();
         $this->registry[Repositories\OrderRepository::class] = new Repositories\OrderRepository();
@@ -34,7 +30,19 @@ final class DIContainer {
         $this->registry[Repositories\RewardCodeRepository::class] = new Repositories\RewardCodeRepository();
         $this->registry[Repositories\UserRepository::class] = new Repositories\UserRepository();
         
-        // --- PHASE 2: SERVICES ---
+        // --- POLICIES ---
+        $this->registry[Policies\UserCanAffordRedemptionPolicy::class] = new Policies\UserCanAffordRedemptionPolicy(
+            $this->get(Repositories\ProductRepository::class),
+            $this->get(Repositories\UserRepository::class)
+        );
+
+        $economy_policy_map = [
+            Commands\RedeemRewardCommand::class => [
+                Policies\UserCanAffordRedemptionPolicy::class,
+            ],
+        ];
+
+        // --- SERVICES ---
         $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
         $this->registry[Services\CDPService::class] = new Services\CDPService();
         $this->registry[Services\ConfigService::class] = new Services\ConfigService();
@@ -48,7 +56,9 @@ final class DIContainer {
             $this->get(Services\ActionLogService::class),
             $this->get(Services\ContextBuilderService::class),
             $this->get(Repositories\RewardCodeRepository::class),
-            $this->get(Repositories\ProductRepository::class)
+            $this->get(Repositories\ProductRepository::class),
+            $this, // Pass the container itself
+            $economy_policy_map // Pass the policy map
         );
         $economy_service->set_user_service($user_service);
         $this->registry[Services\EconomyService::class] = $economy_service;
@@ -59,7 +69,7 @@ final class DIContainer {
 
         $this->registry[Services\GamificationService::class] = new Services\GamificationService($economy_service, $this->get(Services\ActionLogService::class), $this->get(Repositories\AchievementRepository::class), $this->get(Repositories\ActionLogRepository::class));
         
-        // --- PHASE 3: COMMAND HANDLERS & REGISTRATION ---
+        // --- COMMAND HANDLERS ---
         $create_user_handler = new Commands\CreateUserCommandHandler($this->get(Repositories\UserRepository::class), $this->get(Services\CDPService::class));
         $create_user_handler->setReferralService($referral_service);
         $user_service->registerCommandHandler(Commands\CreateUserCommand::class, $create_user_handler);
@@ -69,8 +79,6 @@ final class DIContainer {
         
         $redeem_handler = new Commands\RedeemRewardCommandHandler($this->get(Repositories\ProductRepository::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\OrderRepository::class), $this->get(Services\ActionLogService::class), $this->get(Services\ContextBuilderService::class), $this->get(Repositories\ActionLogRepository::class));
         $economy_service->registerCommandHandler(Commands\RedeemRewardCommand::class, $redeem_handler);
-        
-        // --- THIS IS THE FIX: We need the redeem handler to be available for the scan handler ---
         $this->registry[Commands\RedeemRewardCommandHandler::class] = $redeem_handler; 
         
         $process_scan_handler = new Commands\ProcessProductScanCommandHandler(
@@ -80,7 +88,7 @@ final class DIContainer {
             $this->get(Services\ContextBuilderService::class), 
             $this->get(Services\ActionLogService::class),
             $this->get(Repositories\ActionLogRepository::class),
-            $this->get(Commands\RedeemRewardCommandHandler::class) // <-- INJECT THE DEPENDENCY
+            $this->get(Commands\RedeemRewardCommandHandler::class)
         );
         $economy_service->registerCommandHandler(Commands\ProcessProductScanCommand::class, $process_scan_handler);
         
@@ -90,7 +98,8 @@ final class DIContainer {
         $register_with_token_handler = new Commands\RegisterWithTokenCommandHandler($user_service, $economy_service);
         $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
 
-        // --- PHASE 4: CONTROLLERS ---
+        // --- CONTROLLERS ---
+        // (No changes here)
         $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
         $this->registry[Api\CatalogController::class] = new Api\CatalogController();
         $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));

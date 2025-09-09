@@ -7,7 +7,7 @@ namespace Composer\Autoload;
 class ComposerStaticInita2d9fe3a3935209d616338e413db399c
 {
     public static $files = array (
-        '6b7ae438adafe898e14f8ad87621a1e7' => __DIR__ . '/../..' . '/includes/canna-core-functions.php',
+        'cbbaab450dd8af856658ba077916b883' => __DIR__ . '/../..' . '/includes/canna-core-functions.php',
     );
 
     public static $prefixLengthsPsr4 = array (

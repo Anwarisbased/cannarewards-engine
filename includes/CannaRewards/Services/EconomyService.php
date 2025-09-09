@@ -23,19 +23,25 @@ class EconomyService {
     private $context_builder;
     private $user_service;
     private $command_map = []; // The map of Command => Handler
-    private $reward_code_repository; // Added for claimCode
-    private $product_repository; // Added for claimCode
+    private $reward_code_repository;
+    private $product_repository;
+    private $policy_map = []; // The map of Command => [Policies]
+    private $container;     // The DI container to build policies
 
     public function __construct(
         ActionLogService $action_log_service,
         ContextBuilderService $context_builder,
-        RewardCodeRepository $reward_code_repository, // Added
-        ProductRepository $product_repository // Added
+        RewardCodeRepository $reward_code_repository,
+        ProductRepository $product_repository,
+        \CannaRewards\Container\DIContainer $container, // Inject the container
+        array $policy_map = []                         // Inject the policy map
     ) {
         $this->action_log_service = $action_log_service;
         $this->context_builder    = $context_builder;
         $this->reward_code_repository = $reward_code_repository;
         $this->product_repository = $product_repository;
+        $this->container = $container;
+        $this->policy_map = $policy_map;
     }
 
     /**
@@ -57,6 +63,16 @@ class EconomyService {
      */
     public function handle($command) {
         $command_class = get_class($command);
+
+        // --- THE GAUNTLET ---
+        // Before handling, run all registered policies for this command.
+        $policies_for_command = $this->policy_map[$command_class] ?? [];
+        foreach ($policies_for_command as $policy_class) {
+            $policy = $this->container->get($policy_class);
+            $policy->check($command); // This will throw an exception if a rule fails.
+        }
+
+        // If we get here, all policies passed. It's safe to proceed.
         if (!isset($this->command_map[$command_class])) {
             throw new Exception("No handler registered for command: {$command_class}");
         }

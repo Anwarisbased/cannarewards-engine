@@ -6,5 +6,5 @@ $vendorDir = dirname(__DIR__);
 $baseDir = dirname($vendorDir);
 
 return array(
-    '6b7ae438adafe898e14f8ad87621a1e7' => $baseDir . '/includes/canna-core-functions.php',
+    'cbbaab450dd8af856658ba077916b883' => $baseDir . '/includes/canna-core-functions.php',
 );
