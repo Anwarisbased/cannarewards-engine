@@ -49,7 +49,7 @@ final class CannaRewardsEngine {
         }
 
         $this->init_wordpress_components();
-        $this->container->get(Services\GamificationService::class); // "Wake up" event listeners
+        $this->container->get(Services\GamificationService::class);
     }
     
     private function init_wordpress_components() {
@@ -76,7 +76,6 @@ final class CannaRewardsEngine {
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
 
-        // Get fully wired-up objects from the container
         $auth_controller     = $this->container->get(Api\AuthController::class);
         $catalog_controller  = $this->container->get(Api\CatalogController::class);
         $claim_controller    = $this->container->get(Api\ClaimController::class);
@@ -90,7 +89,6 @@ final class CannaRewardsEngine {
         $config_service      = $this->container->get(Services\ConfigService::class);
         $user_service        = $this->container->get(Services\UserService::class);
 
-        // Register Routes
         register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$unauth_controller, 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_with_token'], 'permission_callback' => $permission_public]);
@@ -100,27 +98,18 @@ final class CannaRewardsEngine {
         register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$auth_controller, 'perform_password_reset'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$config_service, 'get_app_config'], 'permission_callback' => $permission_auth]);
         
-        // --- THIS IS THE FIX ---
-        // We now wrap the response in ApiResponse::success to ensure a consistent API structure.
         register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { 
-            $session_data = $user_service->get_user_session_data(get_current_user_id());
-            return \CannaRewards\Api\ApiResponse::success($session_data);
+            $session_dto = $user_service->get_user_session_data(get_current_user_id());
+            // Cast the DTO to an array for the response, which will be JSON encoded.
+            return \CannaRewards\Api\ApiResponse::success((array) $session_dto);
         }, 'permission_callback' => $permission_auth]);
         
         register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_claim'], 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$redeem_controller, 'process_redemption'], 'permission_callback' => $permission_auth]);
         
         register_rest_route($v2_namespace, '/users/me/profile', [
-            [
-                'methods'             => 'GET', 
-                'callback'            => [$profile_controller, 'get_profile'],
-                'permission_callback' => $permission_auth
-            ], 
-            [
-                'methods'             => 'POST', 
-                'callback'            => [$profile_controller, 'update_profile'],
-                'permission_callback' => $permission_auth
-            ]
+            ['methods' => 'GET', 'callback' => [$profile_controller, 'get_profile'], 'permission_callback' => $permission_auth], 
+            ['methods' => 'POST', 'callback' => [$profile_controller, 'update_profile'], 'permission_callback' => $permission_auth]
         ]);
         
         register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$history_controller, 'get_history'], 'permission_callback' => $permission_auth]);
