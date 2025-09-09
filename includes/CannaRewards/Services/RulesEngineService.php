@@ -45,7 +45,6 @@ final class RulesEngineService {
                 return (float)$actualValue > (float)$expectedValue;
             case '<':
                 return (float)$actualValue < (float)$expectedValue;
-            // This engine is now extensible. We can add more operators here later.
             default:
                 return false;
         }
@@ -54,10 +53,6 @@ final class RulesEngineService {
     /**
      * Safely gets a nested value from the context array using dot notation.
      * Example: 'user_snapshot.economy.points_balance'
-     *
-     * @param string $fieldPath The dot-notation path to the key.
-     * @param array $context The context to search within.
-     * @return mixed|null The value if found, otherwise null.
      */
     private function getValueFromContext(string $fieldPath, array $context) {
         $keys = explode('.', $fieldPath);
@@ -65,7 +60,7 @@ final class RulesEngineService {
 
         foreach ($keys as $key) {
             if (!is_array($value) || !array_key_exists($key, $value)) {
-                return null; // The path is invalid or doesn't exist in the context.
+                return null;
             }
             $value = $value[$key];
         }

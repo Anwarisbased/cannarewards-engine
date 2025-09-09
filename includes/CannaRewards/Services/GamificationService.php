@@ -10,12 +10,6 @@ if ( ! defined( 'WPINC' ) ) {
     die;
 }
 
-/**
- * Gamification Service
- *
- * Handles all logic related to processing achievements based on user actions.
- * This service listens for events broadcast by other services and evaluates achievement rules.
- */
 class GamificationService {
     private EconomyService $economy_service;
     private ActionLogService $action_log_service;
@@ -42,69 +36,53 @@ class GamificationService {
         }
     }
 
-    /**
-     * Generic event handler that triggers the main processing logic.
-     */
-    public function handle_event( array $payload, string $event_name ) {
+    public function handle_event(array $payload, string $event_name) {
         $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
-        if ( empty($user_id) ) {
+        if (empty($user_id)) {
             return;
         }
-        
         $this->check_and_process_event($user_id, $event_name, $payload);
     }
 
-    /**
-     * Fetches achievements for a specific event and evaluates them for a user.
-     */
-    private function check_and_process_event( int $user_id, string $event_name, array $context = [] ) {
-        $achievements_to_check = $this->achievement_repository->findByTriggerEvent( $event_name );
-        $user_unlocked_keys    = $this->achievement_repository->getUnlockedKeysForUser( $user_id );
+    private function check_and_process_event(int $user_id, string $event_name, array $context = []) {
+        $achievements_to_check = $this->achievement_repository->findByTriggerEvent($event_name);
+        $user_unlocked_keys = $this->achievement_repository->getUnlockedKeysForUser($user_id);
 
-        foreach ( $achievements_to_check as $achievement ) {
-            if ( in_array( $achievement->achievement_key, $user_unlocked_keys, true ) ) {
+        foreach ($achievements_to_check as $achievement) {
+            if (in_array($achievement->achievement_key, $user_unlocked_keys, true)) {
                 continue;
             }
 
-            if ( $this->evaluate_conditions( $achievement, $user_id, $context ) ) {
-                $this->unlock_achievement( $user_id, $achievement );
+            if ($this->evaluate_conditions($achievement, $user_id, $context)) {
+                $this->unlock_achievement($user_id, $achievement);
             }
         }
     }
     
-    /**
-     * Evaluates the conditions for an achievement to be unlocked.
-     */
-    private function evaluate_conditions( object $achievement, int $user_id, array $context ): bool {
-        // 1. Check the simple trigger count first. This is a basic, non-JSON rule.
+    private function evaluate_conditions(object $achievement, int $user_id, array $context): bool {
         $action_count = $this->action_log_repository->countUserActions($user_id, $achievement->trigger_event);
         if ($action_count < (int) $achievement->trigger_count) {
             return false;
         }
 
-        // --- THE PAYOFF ---
-        // 2. The brittle, complex logic is gone. We delegate the JSON evaluation to the Rules Engine.
         $json_conditions = json_decode($achievement->conditions ?: '[]', true);
         if (!is_array($json_conditions)) {
             error_log("CannaRewards: Malformed JSON condition for achievement key: {$achievement->achievement_key}");
-            return false; // Malformed JSON should fail closed for security.
+            return false;
         }
 
         return $this->rules_engine->evaluate($json_conditions, $context);
     }
 
-    /**
-     * Awards an achievement to a user and grants points.
-     */
-    private function unlock_achievement( int $user_id, object $achievement ) {
-        $this->achievement_repository->saveUnlockedAchievement( $user_id, $achievement->achievement_key );
+    private function unlock_achievement(int $user_id, object $achievement) {
+        $this->achievement_repository->saveUnlockedAchievement($user_id, $achievement->achievement_key);
         
         $points_reward = (int) $achievement->points_reward;
-        if ( $points_reward > 0 ) {
-            $this->economy_service->grant_points( $user_id, $points_reward, 'Achievement Unlocked: ' . $achievement->title );
+        if ($points_reward > 0) {
+            $this->economy_service->grant_points($user_id, $points_reward, 'Achievement Unlocked: ' . $achievement->title);
         }
 
-        $achievement_details = [ 'key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward ];
-        $this->action_log_service->record( $user_id, 'achievement_unlocked', 0, $achievement_details );
+        $achievement_details = ['key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward];
+        $this->action_log_service->record($user_id, 'achievement_unlocked', 0, $achievement_details);
     }
 }

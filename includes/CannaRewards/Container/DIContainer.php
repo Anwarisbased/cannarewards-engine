@@ -22,25 +22,25 @@ class DIContainer {
     }
 
     private function bootstrap(): void {
-        // --- PHASE 1: REPOSITORIES ---
+        // --- PHASE 1: REPOSITORIES (No dependencies) ---
+        $this->registry[Repositories\UserRepository::class] = new Repositories\UserRepository();
         $this->registry[Repositories\ActionLogRepository::class] = new Repositories\ActionLogRepository();
         $this->registry[Repositories\AchievementRepository::class] = new Repositories\AchievementRepository();
         $this->registry[Repositories\OrderRepository::class] = new Repositories\OrderRepository();
         $this->registry[Repositories\ProductRepository::class] = new Repositories\ProductRepository();
         $this->registry[Repositories\RewardCodeRepository::class] = new Repositories\RewardCodeRepository();
-        $this->registry[Repositories\UserRepository::class] = new Repositories\UserRepository();
         
-        // --- PHASE 2: POLICIES ---
+        // --- PHASE 2: POLICIES (Depend on Repositories) ---
         $this->registry[Policies\UserCanAffordRedemptionPolicy::class] = new Policies\UserCanAffordRedemptionPolicy(
             $this->get(Repositories\ProductRepository::class),
             $this->get(Repositories\UserRepository::class)
         );
         $this->registry[Policies\UserAccountIsUniquePolicy::class] = new Policies\UserAccountIsUniquePolicy();
 
-        // --- PHASE 3: STANDALONE & FOUNDATIONAL SERVICES ---
-        $this->registry[Services\RuleConditionRegistryService::class] = new Services\RuleConditionRegistryService();
-        $this->registry[Services\RulesEngineService::class] = new Services\RulesEngineService();
+        // --- PHASE 3: FOUNDATIONAL SERVICES (Depend on Repositories or nothing) ---
         $this->registry[Services\RankService::class] = new Services\RankService($this->get(Repositories\UserRepository::class));
+        $this->registry[Services\RuleConditionRegistryService::class] = new Services\RuleConditionRegistryService($this->get(Services\RankService::class));
+        $this->registry[Services\RulesEngineService::class] = new Services\RulesEngineService();
         $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
         $this->registry[Services\ContentService::class] = new Services\ContentService();
         $this->registry[Services\ContextBuilderService::class] = new Services\ContextBuilderService($this->get(Services\RankService::class));
@@ -48,7 +48,7 @@ class DIContainer {
         $this->registry[Services\CDPService::class] = new Services\CDPService($this->get(Services\RankService::class));
         $this->registry[Services\ConfigService::class] = new Services\ConfigService($this->get(Services\RankService::class));
         
-        // --- PHASE 4: COMPLEX & INTER-DEPENDENT SERVICES ---
+        // --- PHASE 4: COMPLEX SERVICES (Depend on other Services) ---
         $user_policy_map = [ Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, ], ];
         $user_service = new Services\UserService(
             $this->get(Services\CDPService::class),
@@ -87,11 +87,11 @@ class DIContainer {
         $economy_service->set_user_service($user_service);
         $user_service->set_referral_service($referral_service);
 
-        // --- PHASE 6: COMMAND HANDLERS ---
+        // --- PHASE 6: COMMAND HANDLERS (Depend on Services) ---
         $create_user_handler = new Commands\CreateUserCommandHandler($this->get(Repositories\UserRepository::class), $this->get(Services\CDPService::class));
         $create_user_handler->setReferralService($referral_service);
         $user_service->registerCommandHandler(Commands\CreateUserCommand::class, $create_user_handler);
-
+        
         $update_user_handler = new Commands\UpdateProfileCommandHandler($this->get(Services\ActionLogService::class), $this->get(Services\CDPService::class), $this->get(Repositories\UserRepository::class));
         $user_service->registerCommandHandler(Commands\UpdateProfileCommand::class, $update_user_handler);
         
@@ -117,8 +117,7 @@ class DIContainer {
         $register_with_token_handler = new Commands\RegisterWithTokenCommandHandler($user_service, $economy_service);
         $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
 
-        // --- PHASE 7: CONTROLLERS ---
-        $this->registry[Api\RulesController::class] = new Api\RulesController($this->get(Services\RuleConditionRegistryService::class));
+        // --- PHASE 7: CONTROLLERS (Depend on Services) ---
         $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
         $this->registry[Api\CatalogController::class] = new Api\CatalogController();
         $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));
@@ -128,6 +127,7 @@ class DIContainer {
         $this->registry[Api\ProfileController::class] = new Api\ProfileController($this->get(Services\UserService::class));
         $this->registry[Api\RedeemController::class] = new Api\RedeemController($this->get(Services\EconomyService::class));
         $this->registry[Api\ReferralController::class] = new Api\ReferralController($this->get(Services\ReferralService::class));
+        $this->registry[Api\RulesController::class] = new Api\RulesController($this->get(Services\RuleConditionRegistryService::class));
         $this->registry[Api\UnauthenticatedDataController::class] = new Api\UnauthenticatedDataController();
     }
 }
