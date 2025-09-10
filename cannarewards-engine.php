@@ -1,9 +1,11 @@
 <?php
+// FILE: cannarewards-engine.php
+
 /**
  * Plugin Name:       CannaRewards Engine
  * Plugin URI:        https://yourwebsite.com/
  * Description:       The all-in-one, self-reliant engine for the CannaRewards PWA.
- * Version:           2.1.0
+ * Version:           2.2.0
  * Author:            Anwar Isbased
  * Author URI:        https://yourwebsite.com/
  * Text Domain:       canna-rewards
@@ -27,16 +29,16 @@ require_once CANNA_PLUGIN_DIR . 'vendor/autoload.php';
 require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
 
 /**
- * The main function for returning the CannaRewardsEngine instance.
- * It builds the DI container and boots the application.
+ * The main function that boots the CannaRewards application.
  */
 function CannaRewards() {
-    // This is the new bootstrap process.
-    // 1. Build the container from our new, smart bootstrap file.
+    // --- CHANGE: The entire bootstrap process is now clean and simple ---
+    // 1. Build the self-sufficient DI container from our new bootstrap file.
     $container = require CANNA_PLUGIN_DIR . 'includes/container.php';
     
     // 2. Ask the container for the main engine instance.
-    // The CannaRewardsEngine class itself is now managed by the container.
+    // The CannaRewardsEngine class is now managed by the container,
+    // and all of its dependencies are automatically resolved and injected.
     return $container->get(CannaRewards\CannaRewardsEngine::class);
 }
 

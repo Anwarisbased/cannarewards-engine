@@ -81,6 +81,8 @@ includes/CannaRewards/Api/UnauthenticatedDataController.php
 includes/CannaRewards/CannaRewardsEngine.php
 includes/CannaRewards/Commands/CreateUserCommand.php
 includes/CannaRewards/Commands/CreateUserCommandHandler.php
+includes/CannaRewards/Commands/GrantPointsCommand.php
+includes/CannaRewards/Commands/GrantPointsCommandHandler.php
 includes/CannaRewards/Commands/ProcessProductScanCommand.php
 includes/CannaRewards/Commands/ProcessProductScanCommandHandler.php
 includes/CannaRewards/Commands/ProcessUnauthenticatedClaimCommand.php
@@ -91,7 +93,6 @@ includes/CannaRewards/Commands/RegisterWithTokenCommand.php
 includes/CannaRewards/Commands/RegisterWithTokenCommandHandler.php
 includes/CannaRewards/Commands/UpdateProfileCommand.php
 includes/CannaRewards/Commands/UpdateProfileCommandHandler.php
-includes/CannaRewards/Container/DIContainer.php
 includes/CannaRewards/Domain/ValueObjects/EmailAddress.php
 includes/CannaRewards/Domain/ValueObjects/UserId.php
 includes/CannaRewards/DTO/FullProfileDTO.php
@@ -126,6 +127,7 @@ includes/CannaRewards/Services/RulesEngineService.php
 includes/CannaRewards/Services/UserService.php
 includes/class-canna-cdp-handler.php
 includes/class-canna-custom-fields.php
+includes/container.php
 package.json
 phpcs.xml.dist
 playwright.config.js
@@ -1499,6 +1501,131 @@ class UnauthenticatedDataController {
         $preview_data['isReferralGift'] = true;
         
         return new WP_REST_Response($preview_data, 200);
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Commands/GrantPointsCommand.php">
+<?php
+namespace CannaRewards\Commands;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * Command DTO for granting points to a user.
+ */
+final class GrantPointsCommand {
+    public int $user_id;
+    public int $base_points;
+    public string $description;
+    public float $temp_multiplier;
+
+    public function __construct(
+        int $user_id,
+        int $base_points,
+        string $description,
+        float $temp_multiplier = 1.0
+    ) {
+        $this->user_id = $user_id;
+        $this->base_points = $base_points;
+        $this->description = $description;
+        $this->temp_multiplier = $temp_multiplier;
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Commands/GrantPointsCommandHandler.php">
+<?php
+namespace CannaRewards\Commands;
+
+use CannaRewards\Repositories\UserRepository;
+use CannaRewards\Services\ActionLogService;
+use CannaRewards\Services\EconomyService;
+use CannaRewards\Services\RankService;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * Handles the logic for the GrantPointsCommand.
+ */
+final class GrantPointsCommandHandler {
+    private UserRepository $userRepository;
+    private ActionLogService $actionLogService;
+    private RankService $rankService;
+    private EconomyService $economyService;
+
+    public function __construct(
+        UserRepository $userRepository,
+        ActionLogService $actionLogService,
+        RankService $rankService
+    ) {
+        $this->userRepository = $userRepository;
+        $this->actionLogService = $actionLogService;
+        $this->rankService = $rankService;
+    }
+
+    /**
+     * This setter is used by the DI container to resolve a circular dependency.
+     * The handler needs the EconomyService to check for rank transitions,
+     * and the EconomyService needs this handler.
+     */
+    public function setEconomyService(EconomyService $economyService): void {
+        $this->economyService = $economyService;
+    }
+
+    /**
+     * Executes the point-granting logic.
+     * This logic is identical to the old EconomyService::grant_points method.
+     */
+    public function handle(GrantPointsCommand $command): array {
+        $user_rank_dto    = $this->rankService->getUserRank($command->user_id);
+        $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
+        $final_multiplier = max( $rank_multiplier, $command->temp_multiplier );
+        $points_to_grant  = floor( $command->base_points * $final_multiplier );
+
+        $current_balance     = $this->userRepository->getPointsBalance($command->user_id);
+        $new_balance         = $current_balance + $points_to_grant;
+        
+        $lifetime_points     = $this->userRepository->getLifetimePoints($command->user_id);
+        $new_lifetime_points = $lifetime_points + $points_to_grant;
+
+        // Persist the new data
+        $this->userRepository->savePointsAndRank($command->user_id, $new_balance, $new_lifetime_points, $user_rank_dto->key);
+
+        $log_meta_data = [
+            'description'        => $command->description,
+            'points_change'      => $points_to_grant,
+            'new_balance'        => $new_balance,
+            'base_points'        => $command->base_points,
+            'multiplier_applied' => $final_multiplier > 1.0 ? $final_multiplier : null,
+        ];
+        $this->actionLogService->record( $command->user_id, 'points_granted', 0, $log_meta_data );
+
+        // After granting points, check if the user's rank has changed.
+        $this->economyService->check_and_apply_rank_transition($command->user_id);
+
+        return [
+            'points_earned'      => $points_to_grant,
+            'new_points_balance' => $new_balance,
+        ];
+    }
+
+    /**
+     * Temporary helper to get a multiplier from a rank key.
+     */
+    private function getRankMultiplier(string $rankKey): float {
+        $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');
+        if ($rank_post) {
+            $multiplier = get_post_meta($rank_post->ID, 'point_multiplier', true);
+            return !empty($multiplier) ? (float) $multiplier : 1.0;
+        }
+        return 1.0;
     }
 }
 </file>
@@ -4849,110 +4976,6 @@ final class CreateUserCommand {
 }
 </file>
 
-<file path="includes/CannaRewards/Commands/ProcessProductScanCommandHandler.php">
-<?php
-namespace CannaRewards\Commands;
-
-use CannaRewards\Repositories\RewardCodeRepository;
-use CannaRewards\Repositories\ProductRepository;
-use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Repositories\ActionLogRepository;
-use CannaRewards\Services\EconomyService;
-use CannaRewards\Services\ActionLogService;
-use CannaRewards\Services\ContextBuilderService;
-use CannaRewards\Includes\Event;
-use Exception;
-
-final class ProcessProductScanCommandHandler {
-    private $reward_code_repository;
-    private $product_repository;
-    private $economy_service;
-    private $action_log_service;
-    private $context_builder;
-    private $action_log_repository;
-    private $redeem_reward_handler; // <-- ADD PROPERTY
-
-    public function __construct(
-        RewardCodeRepository $reward_code_repository,
-        ProductRepository $product_repository,
-        EconomyService $economy_service,
-        ContextBuilderService $context_builder,
-        ActionLogService $action_log_service,
-        ActionLogRepository $action_log_repository,
-        RedeemRewardCommandHandler $redeem_reward_handler // <-- ADD TO CONSTRUCTOR
-    ) {
-        $this->reward_code_repository = $reward_code_repository;
-        $this->product_repository = $product_repository;
-        $this->economy_service = $economy_service;
-        $this->context_builder = $context_builder;
-        $this->action_log_service = $action_log_service;
-        $this->action_log_repository = $action_log_repository;
-        $this->redeem_reward_handler = $redeem_reward_handler; // <-- ASSIGN PROPERTY
-    }
-
-    public function handle(ProcessProductScanCommand $command): array {
-        $code_data = $this->reward_code_repository->findValidCode($command->code);
-        if (!$code_data) {
-            throw new Exception('This code is invalid or has already been used.');
-        }
-
-        $product_id = $this->product_repository->findIdBySku($code_data->sku);
-        if (!$product_id) {
-            throw new Exception('The product associated with this code could not be found.');
-        }
-        
-        $scan_count = $this->action_log_repository->countUserActions($command->user_id, 'scan');
-        $is_first_scan = ($scan_count === 0);
-
-        $this->action_log_service->record($command->user_id, 'scan', $product_id);
-        
-        $product_post = get_post($product_id);
-        $product_name = $product_post->post_title;
-        $points_result = [];
-
-        if ($is_first_scan) {
-            // --- THIS IS THE FIX ---
-            // On first scan, automatically trigger a redemption for the welcome gift.
-            $options = get_option('canna_rewards_options', []);
-            $welcome_reward_id = !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
-            
-            if ($welcome_reward_id > 0) {
-                // To create the order, we dispatch a RedeemRewardCommand internally.
-                $redeem_command = new RedeemRewardCommand($command->user_id, $welcome_reward_id, []);
-                $this->redeem_reward_handler->handle($redeem_command);
-            }
-
-            $user_repo = new UserRepository();
-            $points_result['points_earned'] = 0;
-            $points_result['new_points_balance'] = $user_repo->getPointsBalance($command->user_id);
-            $message = 'Welcome! You have unlocked a special reward for your first scan.';
-
-        } else {
-            // It's a subsequent scan, so grant points as normal.
-            $base_points = $this->product_repository->getPointsAward($product_id);
-            $description = 'Product Scan: ' . $product_name;
-            $points_result = $this->economy_service->grant_points($command->user_id, $base_points, $description);
-            $message = sprintf('You earned %d points for scanning %s!', $points_result['points_earned'], $product_name);
-        }
-
-        $this->reward_code_repository->markCodeAsUsed($code_data->id, $command->user_id);
-
-        $full_context = $this->context_builder->build_event_context($command->user_id, $product_post);
-        $full_context['is_first_scan'] = $is_first_scan; 
-        
-        Event::broadcast('product_scanned', $full_context);
-
-        return [
-            'success'            => true,
-            'message'            => $message,
-            'points_earned'      => $points_result['points_earned'],
-            'new_points_balance' => $points_result['new_points_balance'],
-            'triggered_events'   => [],
-        ];
-    }
-}
-</file>
-
 <file path="includes/CannaRewards/Commands/RegisterWithTokenCommand.php">
 <?php
 namespace CannaRewards\Commands;
@@ -5548,6 +5571,92 @@ final class RulesEngineService {
 }
 </file>
 
+<file path="includes/container.php">
+<?php
+
+use CannaRewards\Commands;
+use CannaRewards\Policies;
+use CannaRewards\Services;
+use Psr\Container\ContainerInterface;
+use DI\ContainerBuilder;
+
+$containerBuilder = new ContainerBuilder();
+$containerBuilder->useAutowiring(true);
+
+$containerBuilder->addDefinitions([
+    'economy_policy_map' => [
+        Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class, ],
+    ],
+    'user_policy_map' => [
+        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, ],
+    ],
+    
+    // Explicitly define how to build the Command Buses with their policy maps
+    Services\UserService::class => DI\autowire()
+        ->constructorParameter('policy_map', DI\get('user_policy_map')),
+    
+    Services\EconomyService::class => DI\autowire()
+        ->constructorParameter('policy_map', DI\get('economy_policy_map')),
+
+    // Allow the container to inject itself
+    ContainerInterface::class => function (ContainerInterface $c) {
+        return $c;
+    },
+]);
+
+// STAGE 1: Build the container with all the service definitions.
+$container = $containerBuilder->build();
+
+// --- THIS IS THE FIX ---
+// STAGE 2: Get the services and manually configure them.
+// This is the correct way to handle circular dependencies and handler registration.
+// We are NO LONGER trying to get the handlers from the container itself.
+$userService = $container->get(Services\UserService::class);
+$economyService = $container->get(Services\EconomyService::class);
+$referralService = $container->get(Services\ReferralService::class);
+
+// Resolve circular dependencies
+$userService->set_referral_service($referralService);
+$economyService->set_user_service($userService);
+
+// Manually build and register the handlers. The container will autowire their dependencies.
+$userService->registerCommandHandler(
+    Commands\CreateUserCommand::class, 
+    $container->get(Commands\CreateUserCommandHandler::class)
+);
+$userService->registerCommandHandler(
+    Commands\UpdateProfileCommand::class, 
+    $container->get(Commands\UpdateProfileCommandHandler::class)
+);
+$userService->registerCommandHandler(
+    Commands\RegisterWithTokenCommand::class, 
+    $container->get(Commands\RegisterWithTokenCommandHandler::class)
+);
+
+$economyService->registerCommandHandler(
+    Commands\GrantPointsCommand::class, 
+    $container->get(Commands\GrantPointsCommandHandler::class)
+);
+$economyService->registerCommandHandler(
+    Commands\RedeemRewardCommand::class, 
+    $container->get(Commands\RedeemRewardCommandHandler::class)
+);
+$economyService->registerCommandHandler(
+    Commands\ProcessProductScanCommand::class, 
+    $container->get(Commands\ProcessProductScanCommandHandler::class)
+);
+$economyService->registerCommandHandler(
+    Commands\ProcessUnauthenticatedClaimCommand::class, 
+    $container->get(Commands\ProcessUnauthenticatedClaimCommandHandler::class)
+);
+
+// Manually resolve the final circular dependency for the GrantPointsCommandHandler
+$container->get(Commands\GrantPointsCommandHandler::class)->setEconomyService($economyService);
+
+// Return the fully built and configured container.
+return $container;
+</file>
+
 <file path="tests-api/economy.spec.js">
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
@@ -5916,6 +6025,117 @@ final class CreateUserCommandHandler {
 }
 </file>
 
+<file path="includes/CannaRewards/Commands/ProcessProductScanCommandHandler.php">
+<?php
+namespace CannaRewards\Commands;
+
+use CannaRewards\Repositories\RewardCodeRepository;
+use CannaRewards\Repositories\ProductRepository;
+use CannaRewards\Repositories\ActionLogRepository;
+use CannaRewards\Repositories\UserRepository; // <-- IMPORT THE CORRECT REPOSITORY
+use CannaRewards\Services\EconomyService;
+use CannaRewards\Services\ActionLogService;
+use CannaRewards\Services\EventFactory;
+use CannaRewards\Includes\Event;
+use Exception;
+
+final class ProcessProductScanCommandHandler {
+    private RewardCodeRepository $reward_code_repository;
+    private ProductRepository $product_repository;
+    private EconomyService $economy_service;
+    private ActionLogService $action_log_service;
+    private ActionLogRepository $action_log_repository;
+    private RedeemRewardCommandHandler $redeem_reward_handler;
+    private EventFactory $event_factory;
+    private UserRepository $userRepository; // <-- ADD THE PROPERTY
+
+    public function __construct(
+        RewardCodeRepository $reward_code_repository,
+        ProductRepository $product_repository,
+        EconomyService $economy_service,
+        ActionLogService $action_log_service,
+        ActionLogRepository $action_log_repository,
+        RedeemRewardCommandHandler $redeem_reward_handler,
+        EventFactory $event_factory,
+        UserRepository $userRepository // <-- ADD THE DEPENDENCY
+    ) {
+        $this->reward_code_repository = $reward_code_repository;
+        $this->product_repository = $product_repository;
+        $this->economy_service = $economy_service;
+        $this->action_log_service = $action_log_service;
+        $this->action_log_repository = $action_log_repository;
+        $this->redeem_reward_handler = $redeem_reward_handler;
+        $this->event_factory = $event_factory;
+        $this->userRepository = $userRepository; // <-- ASSIGN THE PROPERTY
+    }
+
+    public function handle(ProcessProductScanCommand $command): array {
+        $code_data = $this->reward_code_repository->findValidCode($command->code);
+        if (!$code_data) {
+            throw new Exception('This code is invalid or has already been used.');
+        }
+
+        $product_id = $this->product_repository->findIdBySku($code_data->sku);
+        if (!$product_id) {
+            throw new Exception('The product associated with this code could not be found.');
+        }
+        
+        $scan_count = $this->action_log_repository->countUserActions($command->user_id, 'scan');
+        $is_first_scan = ($scan_count === 0);
+
+        $this->action_log_service->record($command->user_id, 'scan', $product_id);
+        
+        $product_post = get_post($product_id);
+        $product_name = $product_post->post_title;
+        $points_result = [];
+        $message = '';
+
+        if ($is_first_scan) {
+            $options = get_option('canna_rewards_options', []);
+            $welcome_reward_id = !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
+            
+            if ($welcome_reward_id > 0) {
+                $redeem_command = new RedeemRewardCommand($command->user_id, $welcome_reward_id, []);
+                $this->redeem_reward_handler->handle($redeem_command);
+            }
+
+            // --- THIS IS THE FIX ---
+            // The method is on UserRepository, which we now have.
+            $points_result['points_earned'] = 0;
+            $points_result['new_points_balance'] = $this->userRepository->getPointsBalance($command->user_id);
+            $message = 'Welcome! You have unlocked a special reward for your first scan.';
+
+        } else {
+            $base_points = $this->product_repository->getPointsAward($product_id);
+            $grant_command = new GrantPointsCommand(
+                $command->user_id,
+                $base_points,
+                'Product Scan: ' . $product_name
+            );
+            $points_result = $this->economy_service->handle($grant_command);
+            $message = sprintf('You earned %d points for scanning %s!', $points_result['points_earned'], $product_name);
+        }
+
+        $this->reward_code_repository->markCodeAsUsed($code_data->id, $command->user_id);
+
+        try {
+            $event_payload = $this->event_factory->createProductScannedEvent($command->user_id, $product_post, $is_first_scan);
+            Event::broadcast('product_scanned', $event_payload);
+        } catch (Exception $e) {
+            error_log("FATAL: Could not generate valid 'product_scanned' event: " . $e->getMessage());
+        }
+
+        return [
+            'success'            => true,
+            'message'            => $message,
+            'points_earned'      => $points_result['points_earned'],
+            'new_points_balance' => $points_result['new_points_balance'],
+            'triggered_events'   => [],
+        ];
+    }
+}
+</file>
+
 <file path="includes/CannaRewards/Commands/RedeemRewardCommandHandler.php">
 <?php
 namespace CannaRewards\Commands;
@@ -6250,131 +6470,6 @@ class ContextBuilderService {
 }
 </file>
 
-<file path="includes/CannaRewards/Services/ReferralService.php">
-<?php
-namespace CannaRewards\Services;
-
-use CannaRewards\Includes\Event;
-use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Repositories\ActionLogRepository;
-
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
-/**
- * Referral Service
- *
- * Handles all business logic related to referrals.
- */
-class ReferralService {
-    private $economy_service;
-    private $cdp_service;
-    private $user_repository;
-    private $action_log_repository;
-
-    public function __construct(
-        EconomyService $economy_service,
-        CDPService $cdp_service,
-        UserRepository $user_repository,
-        ActionLogRepository $action_log_repository
-    ) {
-        $this->economy_service = $economy_service;
-        $this->cdp_service = $cdp_service;
-        $this->user_repository = $user_repository;
-        $this->action_log_repository = $action_log_repository;
-        
-        Event::listen('product_scanned', [$this, 'handle_referral_conversion']);
-    }
-
-    /**
-     * Processes a new user who signed up with a referral code.
-     */
-    public function process_new_user_referral( int $new_user_id, string $referral_code ) {
-        if ( empty($new_user_id) || empty($referral_code) ) {
-            return;
-        }
-
-        $referrer_user_id = $this->user_repository->findUserIdByReferralCode($referral_code);
-
-        if ( $referrer_user_id ) {
-            $this->user_repository->setReferredBy($new_user_id, $referrer_user_id);
-            $this->execute_triggers('referral_invitee_signed_up', $new_user_id, ['referrer_id' => $referrer_user_id]);
-        }
-    }
-
-    /**
-     * Event handler that checks if a first scan is a referral conversion.
-     */
-    public function handle_referral_conversion( array $payload ) {
-        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
-        if (empty($user_id)) { 
-            return; 
-        }
-
-        // We check for 1 scan, because the scan has already been logged by this point.
-        if ( 1 === $this->action_log_repository->countUserActions($user_id, 'scan') ) {
-            $referrer_user_id = $this->user_repository->getReferringUserId($user_id);
-            
-            if ( $referrer_user_id ) {
-                $this->execute_triggers('referral_converted', $referrer_user_id, ['invitee_id' => $user_id]);
-            }
-        }
-    }
-    
-    /**
-     * Finds and executes all active Triggers for a given event key.
-     */
-    private function execute_triggers(string $event_key, int $user_id, array $context = []) {
-        // This logic is simple and can remain for now. In a larger system,
-        // this would use a TriggerRepository.
-        $triggers_to_run = get_posts([
-            'post_type'      => 'canna_trigger',
-            'posts_per_page' => -1,
-            'meta_key'       => 'event_key',
-            'meta_value'     => $event_key,
-        ]);
-
-        if (empty($triggers_to_run)) {
-            return;
-        }
-
-        foreach ($triggers_to_run as $trigger_post) {
-            $action_type = get_post_meta($trigger_post->ID, 'action_type', true);
-            $action_value = get_post_meta($trigger_post->ID, 'action_value', true);
-            
-            if ($action_type === 'grant_points') {
-                $points_to_grant = (int) $action_value;
-                if ($points_to_grant > 0) {
-                    $this->economy_service->grant_points($user_id, $points_to_grant, $trigger_post->post_title);
-                }
-            }
-        }
-
-        $this->cdp_service->track($user_id, $event_key, $context);
-    }
-    
-    /**
-     * Generates a unique referral code for a new user.
-     */
-    public function generate_code_for_new_user( int $user_id, string $first_name = '' ): string {
-        // This logic can stay as it interacts with the UserRepository
-        global $wpdb; // A small exception, can be moved to repo later.
-        $base_code_name = ! empty( $first_name ) ? $first_name : 'USER';
-        $base_code      = strtoupper( substr( preg_replace( '/[^a-zA-Z0-9]/', '', $base_code_name ), 0, 8 ) );
-        do {
-            $unique_part = strtoupper( wp_generate_password( 4, false, false ) );
-            $new_code    = $base_code . $unique_part;
-            $exists = $this->user_repository->findUserIdByReferralCode($new_code);
-        } while ( ! is_null( $exists ) );
-        
-        $this->user_repository->saveReferralCode($user_id, $new_code);
-        return $new_code;
-    }
-}
-</file>
-
 <file path="package.json">
 {
   "name": "cannarewards-engine",
@@ -6510,284 +6605,105 @@ class OrderRepository {
 }
 </file>
 
-<file path="includes/CannaRewards/Services/EconomyService.php">
+<file path="includes/CannaRewards/Services/ReferralService.php">
 <?php
 namespace CannaRewards\Services;
 
 use CannaRewards\Includes\Event;
-use CannaRewards\Repositories\RewardCodeRepository;
-use CannaRewards\Repositories\ProductRepository;
-use Exception;
-
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
-/**
- * Economy Service (Command Bus)
- *
- * The central "bank" for the platform. This service acts as a dispatcher,
- * delegating actions to dedicated handlers. It is the ONLY class allowed
- * to modify a user's points balance.
- */
-class EconomyService {
-    private ActionLogService $action_log_service;
-    private ContextBuilderService $context_builder;
-    private ?UserService $user_service = null;
-    private array $command_map = [];
-    private RewardCodeRepository $reward_code_repository;
-    private ProductRepository $product_repository;
-    private array $policy_map = [];
-    private \CannaRewards\Container\DIContainer $container;
-    private RankService $rankService;
-
-    public function __construct(
-        ActionLogService $action_log_service,
-        ContextBuilderService $context_builder,
-        RewardCodeRepository $reward_code_repository,
-        ProductRepository $product_repository,
-        \CannaRewards\Container\DIContainer $container,
-        array $policy_map,
-        RankService $rankService
-    ) {
-        $this->action_log_service = $action_log_service;
-        $this->context_builder    = $context_builder;
-        $this->reward_code_repository = $reward_code_repository;
-        $this->product_repository = $product_repository;
-        $this->container = $container;
-        $this->policy_map = $policy_map;
-        $this->rankService = $rankService;
-    }
-
-    /**
-     * Setter method to resolve circular dependency with UserService.
-     */
-    public function set_user_service(UserService $user_service) {
-        $this->user_service = $user_service;
-    }
-
-    /**
-     * Registers a handler for a specific command class.
-     */
-    public function registerCommandHandler(string $command_class, object $handler_instance): void {
-        $this->command_map[$command_class] = $handler_instance;
-    }
-
-    /**
-     * The main entry point to handle economy-related commands.
-     */
-    public function handle($command) {
-        $command_class = get_class($command);
-
-        // --- THE GAUNTLET ---
-        $policies_for_command = $this->policy_map[$command_class] ?? [];
-        foreach ($policies_for_command as $policy_class) {
-            $policy = $this->container->get($policy_class);
-            $policy->check($command);
-        }
-
-        if (!isset($this->command_map[$command_class])) {
-            throw new Exception("No handler registered for command: {$command_class}");
-        }
-        $handler = $this->command_map[$command_class];
-        return $handler->handle($command);
-    }
-    
-    /**
-     * Grants points to a user. This remains a core utility method.
-     */
-    public function grant_points( int $user_id, int $base_points, string $description, float $temp_multiplier = 1.0 ): array {
-        $user_rank_dto    = $this->rankService->getUserRank($user_id);
-        $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
-        $final_multiplier = max( $rank_multiplier, $temp_multiplier );
-        $points_to_grant  = floor( $base_points * $final_multiplier );
-
-        $current_balance     = get_user_points_balance( $user_id );
-        $new_balance         = $current_balance + $points_to_grant;
-        update_user_meta( $user_id, '_canna_points_balance', $new_balance );
-
-        $lifetime_points     = get_user_lifetime_points( $user_id );
-        $new_lifetime_points = $lifetime_points + $points_to_grant;
-        update_user_meta( $user_id, '_canna_lifetime_points', $new_lifetime_points );
-
-        $log_meta_data = [
-            'description'        => $description,
-            'points_change'      => $points_to_grant,
-            'new_balance'        => $new_balance,
-            'base_points'        => $base_points,
-            'multiplier_applied' => $final_multiplier > 1.0 ? $final_multiplier : null,
-        ];
-        $this->action_log_service->record( $user_id, 'points_granted', 0, $log_meta_data );
-
-        $this->check_and_apply_rank_transition( $user_id );
-
-        return [
-            'points_earned'      => $points_to_grant,
-            'new_points_balance' => $new_balance,
-        ];
-    }
-
-    /**
-     * Temporary helper to get a multiplier from a rank key.
-     * This logic will be improved when we enhance the RankDTO.
-     */
-    private function getRankMultiplier(string $rankKey): float {
-        $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');
-        if ($rank_post) {
-            $multiplier = get_post_meta($rank_post->ID, 'point_multiplier', true);
-            return !empty($multiplier) ? (float) $multiplier : 1.0;
-        }
-        return 1.0;
-    }
-
-
-    /**
-     * Checks for rank transitions.
-     */
-    private function check_and_apply_rank_transition( int $user_id ) {
-        $current_rank_key = get_user_meta( $user_id, '_canna_current_rank_key', true ) ?: 'member';
-        
-        $new_rank_dto = $this->rankService->getUserRank($user_id);
-        $new_rank_key = $new_rank_dto->key;
-
-        if ( $new_rank_key !== $current_rank_key ) {
-            update_user_meta( $user_id, '_canna_current_rank_key', $new_rank_key );
-            
-            $all_ranks_dtos = $this->rankService->getRankStructure();
-            $all_ranks = array_reduce($all_ranks_dtos, function ($carry, $item) {
-                $carry[$item->key] = (array) $item;
-                return $carry;
-            }, []);
-            
-            $old_rank_object = $all_ranks[ $current_rank_key ] ?? null;
-            $new_rank_object = $all_ranks[ $new_rank_key ] ?? null;
-            
-            $context = $this->context_builder->build_event_context($user_id);
-
-            Event::broadcast('user_rank_changed', array_merge($context, [
-                'old_rank' => $old_rank_object,
-                'new_rank' => $new_rank_object,
-            ]));
-        }
-    }
-
-    /**
-     * The single, authoritative method for processing a QR code claim.
-     */
-    public function claimCode(int $user_id, string $code_to_claim): array {
-        $code_data = $this->reward_code_repository->findValidCode($code_to_claim);
-        if (!$code_data) {
-            throw new Exception('This code is invalid or has already been used.');
-        }
-
-        $product_id = $this->product_repository->findIdBySku($code_data->sku);
-        if (!$product_id) {
-            throw new Exception('The product associated with this code could not be found.');
-        }
-
-        $this->reward_code_repository->markCodeAsUsed($code_data->id, $user_id);
-        $this->action_log_service->record($user_id, 'scan', $product_id);
-
-        $product_post = get_post($product_id);
-        
-        return [
-            'product_id' => $product_id,
-            'product_post' => $product_post,
-            'base_points' => $this->product_repository->getPointsAward($product_id)
-        ];
-    }
-}
-</file>
-
-<file path="includes/CannaRewards/Services/GamificationService.php">
-<?php
-namespace CannaRewards\Services;
-
-use CannaRewards\Includes\Event;
-use CannaRewards\Repositories\AchievementRepository;
+use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Repositories\ActionLogRepository;
 
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
-class GamificationService {
-    private EconomyService $economy_service;
-    private ActionLogService $action_log_service;
-    private AchievementRepository $achievement_repository;
+class ReferralService {
+    private CDPService $cdp_service;
+    private UserRepository $user_repository;
     private ActionLogRepository $action_log_repository;
-    private RulesEngineService $rules_engine;
 
     public function __construct(
-        EconomyService $economy_service,
-        ActionLogService $action_log_service,
-        AchievementRepository $achievement_repository,
-        ActionLogRepository $action_log_repository,
-        RulesEngineService $rules_engine
+        CDPService $cdp_service,
+        UserRepository $user_repository,
+        ActionLogRepository $action_log_repository
     ) {
-        $this->economy_service = $economy_service;
-        $this->action_log_service = $action_log_service;
-        $this->achievement_repository = $achievement_repository;
+        $this->cdp_service = $cdp_service;
+        $this->user_repository = $user_repository;
         $this->action_log_repository = $action_log_repository;
-        $this->rules_engine = $rules_engine;
-
-        $events_to_listen_for = ['product_scanned', 'user_rank_changed', 'reward_redeemed'];
-        foreach ($events_to_listen_for as $event_name) {
-            Event::listen($event_name, [$this, 'handle_event']);
-        }
+        
+        Event::listen('product_scanned', [$this, 'handle_referral_conversion']);
     }
 
-    public function handle_event(array $payload, string $event_name) {
-        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
-        if (empty($user_id)) {
+    public function process_new_user_referral(int $new_user_id, string $referral_code) {
+        if (empty($new_user_id) || empty($referral_code)) {
             return;
         }
-        $this->check_and_process_event($user_id, $event_name, $payload);
+
+        $referrer_user_id = $this->user_repository->findUserIdByReferralCode($referral_code);
+
+        if ($referrer_user_id) {
+            $this->user_repository->setReferredBy($new_user_id, $referrer_user_id);
+            $this->execute_triggers('referral_invitee_signed_up', $new_user_id, ['referrer_id' => $referrer_user_id]);
+        }
     }
 
-    private function check_and_process_event(int $user_id, string $event_name, array $context = []) {
-        $achievements_to_check = $this->achievement_repository->findByTriggerEvent($event_name);
-        $user_unlocked_keys = $this->achievement_repository->getUnlockedKeysForUser($user_id);
+    public function handle_referral_conversion(array $payload) {
+        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
+        if (empty($user_id)) { 
+            return; 
+        }
 
-        foreach ($achievements_to_check as $achievement) {
-            if (in_array($achievement->achievement_key, $user_unlocked_keys, true)) {
-                continue;
-            }
-
-            if ($this->evaluate_conditions($achievement, $user_id, $context)) {
-                $this->unlock_achievement($user_id, $achievement);
+        if (1 === $this->action_log_repository->countUserActions($user_id, 'scan')) {
+            $referrer_user_id = $this->user_repository->getReferringUserId($user_id);
+            
+            if ($referrer_user_id) {
+                $this->execute_triggers('referral_converted', $referrer_user_id, ['invitee_id' => $user_id]);
             }
         }
     }
     
-    private function evaluate_conditions(object $achievement, int $user_id, array $context): bool {
-        $action_count = $this->action_log_repository->countUserActions($user_id, $achievement->trigger_event);
-        if ($action_count < (int) $achievement->trigger_count) {
-            return false;
+    private function execute_triggers(string $event_key, int $user_id, array $context = []) {
+        $triggers_to_run = get_posts([
+            'post_type'      => 'canna_trigger',
+            'posts_per_page' => -1,
+            'meta_key'       => 'event_key',
+            'meta_value'     => $event_key,
+        ]);
+
+        if (empty($triggers_to_run)) {
+            return;
         }
 
-        $json_conditions = json_decode($achievement->conditions ?: '[]', true);
-        if (!is_array($json_conditions)) {
-            error_log("CannaRewards: Malformed JSON condition for achievement key: {$achievement->achievement_key}");
-            return false;
+        foreach ($triggers_to_run as $trigger_post) {
+            $action_type = get_post_meta($trigger_post->ID, 'action_type', true);
+            $action_value = get_post_meta($trigger_post->ID, 'action_value', true);
+            
+            if ($action_type === 'grant_points') {
+                $points_to_grant = (int) $action_value;
+                if ($points_to_grant > 0) {
+                    Event::broadcast('points_to_be_granted', [
+                        'user_id'     => $user_id,
+                        'points'      => $points_to_grant,
+                        'description' => $trigger_post->post_title
+                    ]);
+                }
+            }
         }
 
-        return $this->rules_engine->evaluate($json_conditions, $context);
+        $this->cdp_service->track($user_id, $event_key, $context);
     }
-
-    private function unlock_achievement(int $user_id, object $achievement) {
-        $this->achievement_repository->saveUnlockedAchievement($user_id, $achievement->achievement_key);
+    
+    public function generate_code_for_new_user(int $user_id, string $first_name = ''): string {
+        $base_code_name = !empty($first_name) ? $first_name : 'USER';
+        $base_code      = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $base_code_name), 0, 8));
+        do {
+            $unique_part = strtoupper(wp_generate_password(4, false, false));
+            $new_code    = $base_code . $unique_part;
+            $exists = $this->user_repository->findUserIdByReferralCode($new_code);
+        } while (!is_null($exists));
         
-        $points_reward = (int) $achievement->points_reward;
-        if ($points_reward > 0) {
-            $this->economy_service->grant_points($user_id, $points_reward, 'Achievement Unlocked: ' . $achievement->title);
-        }
-
-        $achievement_details = ['key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward];
-        $this->action_log_service->record($user_id, 'achievement_unlocked', 0, $achievement_details);
+        $this->user_repository->saveReferralCode($user_id, $new_code);
+        return $new_code;
     }
+    
+    public function get_user_referrals(int $user_id): array { return []; }
+    public function get_nudge_options_for_referee(int $user_id, string $email): array { return []; }
 }
 </file>
 
@@ -6922,146 +6838,101 @@ class AuthController {
 }
 </file>
 
-<file path="includes/CannaRewards/CannaRewardsEngine.php">
+<file path="includes/CannaRewards/Services/GamificationService.php">
 <?php
-namespace CannaRewards;
+namespace CannaRewards\Services;
 
-use CannaRewards\Admin\AdminMenu;
-use CannaRewards\Admin\AchievementMetabox;
-use CannaRewards\Admin\CustomFieldMetabox;
-use CannaRewards\Admin\ProductMetabox;
-use CannaRewards\Admin\TriggerMetabox;
-use CannaRewards\Admin\UserProfile;
-use CannaRewards\Api\AuthController;
-use CannaRewards\Api\CatalogController;
-use CannaRewards\Api\ClaimController;
-use CannaRewards\Api\HistoryController;
-use CannaRewards\Api\OrdersController;
-use CannaRewards\Api\PageController;
-use CannaRewards\Api\ProfileController;
-use CannaRewards\Api\RedeemController;
-use CannaRewards\Api\ReferralController;
-use CannaRewards\Api\RulesController;
-use CannaRewards\Api\UnauthenticatedDataController;
-use CannaRewards\Container\DIContainer;
-use CannaRewards\Includes\DB;
-use CannaRewards\Includes\Integrations;
-use CannaRewards\Services;
+use CannaRewards\Commands\GrantPointsCommand;
+use CannaRewards\Includes\Event;
+use CannaRewards\Repositories\AchievementRepository;
+use CannaRewards\Repositories\ActionLogRepository;
 
-final class CannaRewardsEngine {
-    private static $instance;
-    private $container;
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
 
-    public static function instance() {
-        if (is_null(self::$instance)) {
-            self::$instance = new self();
+class GamificationService {
+    private EconomyService $economy_service;
+    private ActionLogService $action_log_service;
+    private AchievementRepository $achievement_repository;
+    private ActionLogRepository $action_log_repository;
+    private RulesEngineService $rules_engine;
+
+    public function __construct(
+        EconomyService $economy_service,
+        ActionLogService $action_log_service,
+        AchievementRepository $achievement_repository,
+        ActionLogRepository $action_log_repository,
+        RulesEngineService $rules_engine
+    ) {
+        $this->economy_service = $economy_service;
+        $this->action_log_service = $action_log_service;
+        $this->achievement_repository = $achievement_repository;
+        $this->action_log_repository = $action_log_repository;
+        $this->rules_engine = $rules_engine;
+
+        $events_to_listen_for = ['product_scanned', 'user_rank_changed', 'reward_redeemed'];
+        foreach ($events_to_listen_for as $event_name) {
+            Event::listen($event_name, [$this, 'handle_event']);
         }
-        return self::$instance;
     }
 
-    public function __construct() {
-        $this->container = new DIContainer();
-        add_action('plugins_loaded', [$this, 'init']);
-    }
-    
-    public function init() {
-        Integrations::init();
-
-        if (!class_exists('WooCommerce')) {
-            add_action('admin_notices', function() {
-                echo '<div class="error"><p><strong>CannaRewards Engine Warning:</strong> WooCommerce is not installed or active.</p></div>';
-            });
+    public function handle_event(array $payload, string $event_name) {
+        $user_id = $payload['user_snapshot']['identity']['user_id'] ?? 0;
+        if (empty($user_id)) {
             return;
         }
+        $this->check_and_process_event($user_id, $event_name, $payload);
+    }
 
-        $this->init_wordpress_components();
-        $this->container->get(Services\GamificationService::class);
+    private function check_and_process_event(int $user_id, string $event_name, array $context = []) {
+        $achievements_to_check = $this->achievement_repository->findByTriggerEvent($event_name);
+        $user_unlocked_keys = $this->achievement_repository->getUnlockedKeysForUser($user_id);
+
+        foreach ($achievements_to_check as $achievement) {
+            if (in_array($achievement->achievement_key, $user_unlocked_keys, true)) {
+                continue;
+            }
+
+            if ($this->evaluate_conditions($achievement, $user_id, $context)) {
+                $this->unlock_achievement($user_id, $achievement);
+            }
+        }
     }
     
-    private function init_wordpress_components() {
-        AdminMenu::init();
-        UserProfile::init();
-        ProductMetabox::init();
-        new AchievementMetabox();
-        new CustomFieldMetabox();
-        new TriggerMetabox();
-        
-        add_action('init', 'canna_register_rank_post_type', 0);
-        add_action('init', 'canna_register_achievement_post_type', 0);
-        add_action('init', 'canna_register_custom_field_post_type', 0);
-        add_action('init', 'canna_register_trigger_post_type', 0);
-        
-        add_action('rest_api_init', [$this, 'register_rest_routes']);
-        
-        register_activation_hook(CANNA_PLUGIN_FILE, ['CannaRewards\Includes\DB', 'activate']);
+    private function evaluate_conditions(object $achievement, int $user_id, array $context): bool {
+        $action_count = $this->action_log_repository->countUserActions($user_id, $achievement->trigger_event);
+        if ($action_count < (int) $achievement->trigger_count) {
+            return false;
+        }
+
+        $json_conditions = json_decode($achievement->conditions ?: '[]', true);
+        if (!is_array($json_conditions)) {
+            error_log("CannaRewards: Malformed JSON condition for achievement key: {$achievement->achievement_key}");
+            return false;
+        }
+
+        return $this->rules_engine->evaluate($json_conditions, $context);
     }
 
-    public function register_rest_routes() {
-        $v2_namespace = 'rewards/v2';
-        $v1_namespace = 'rewards/v1';
-        $permission_public = '__return_true';
-        $permission_auth   = fn() => is_user_logged_in();
+    private function unlock_achievement(int $user_id, object $achievement) {
+        $this->achievement_repository->saveUnlockedAchievement($user_id, $achievement->achievement_key);
         
-        // --- THIS IS THE FIX ---
-        // We make the admin permission check more robust. It will now check for a valid
-        // REST API nonce in addition to the user's capabilities. This is the standard,
-        // secure way to handle authentication for admin-area API calls.
-        $permission_admin  = function(\WP_REST_Request $request) {
-            $nonce = $request->get_header('X-WP-Nonce');
-            return wp_verify_nonce($nonce, 'wp_rest') && current_user_can('manage_options');
-        };
+        $points_reward = (int) $achievement->points_reward;
+        if ($points_reward > 0) {
+            // --- THIS IS THE FIX ---
+            // Dispatch a command instead of calling the insecure public method.
+            $command = new GrantPointsCommand(
+                $user_id,
+                $points_reward,
+                'Achievement Unlocked: ' . $achievement->title
+            );
+            $this->economy_service->handle($command);
+        }
 
-        // Get fully wired-up objects from the container
-        $auth_controller     = $this->container->get(Api\AuthController::class);
-        $catalog_controller  = $this->container->get(Api\CatalogController::class);
-        $claim_controller    = $this->container->get(Api\ClaimController::class);
-        $history_controller  = $this->container->get(Api\HistoryController::class);
-        $orders_controller   = $this->container->get(Api\OrdersController::class);
-        $page_controller     = $this->container->get(Api\PageController::class);
-        $profile_controller  = $this->container->get(Api\ProfileController::class);
-        $redeem_controller   = $this->container->get(Api\RedeemController::class);
-        $referral_controller = $this->container->get(Api\ReferralController::class);
-        $rules_controller    = $this->container->get(Api\RulesController::class);
-        $unauth_controller   = $this->container->get(Api\UnauthenticatedDataController::class);
-        $config_service      = $this->container->get(Services\ConfigService::class);
-        $user_service        = $this->container->get(Services\UserService::class);
-
-        // --- ADMIN-ONLY ENDPOINTS ---
-        register_rest_route($v2_namespace, '/rules/conditions', [
-            'methods' => 'GET',
-            'callback' => [$rules_controller, 'get_conditions'],
-            'permission_callback' => $permission_admin
-        ]);
-
-        // --- PUBLIC & AUTHENTICATED ENDPOINTS ---
-        register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$unauth_controller, 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_with_token'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/register', ['methods' => 'POST', 'callback' => [$auth_controller, 'register_user'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/auth/login', ['methods' => 'POST', 'callback' => [$auth_controller, 'login_user'], 'permission_callback' => $permission_public]);
-        register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$auth_controller, 'request_password_reset'], 'permission_callback' => $permission_public]);
-        register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$auth_controller, 'perform_password_reset'], 'permission_callback' => $permission_public]);
-        register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$config_service, 'get_app_config'], 'permission_callback' => $permission_auth]);
-        
-        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() use ($user_service) { 
-            $session_dto = $user_service->get_user_session_data(get_current_user_id());
-            return \CannaRewards\Api\ApiResponse::success((array) $session_dto);
-        }, 'permission_callback' => $permission_auth]);
-        
-        register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$claim_controller, 'process_claim'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$redeem_controller, 'process_redemption'], 'permission_callback' => $permission_auth]);
-        
-        register_rest_route($v2_namespace, '/users/me/profile', [
-            ['methods' => 'GET', 'callback' => [$profile_controller, 'get_profile'], 'permission_callback' => $permission_auth], 
-            ['methods' => 'POST', 'callback' => [$profile_controller, 'update_profile'], 'permission_callback' => $permission_auth]
-        ]);
-        
-        register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$history_controller, 'get_history'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/users/me/orders', ['methods' => 'GET', 'callback' => [$orders_controller, 'get_orders'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/users/me/referrals', ['methods' => 'GET', 'callback' => [$referral_controller, 'get_my_referrals'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/catalog/products', ['methods' => 'GET', 'callback' => [$catalog_controller, 'get_products'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/catalog/products/(?P<id>[\d]+)', ['methods' => 'GET', 'callback' => [$catalog_controller, 'get_product'], 'permission_callback' => $permission_auth]);
-        register_rest_route($v2_namespace, '/pages/(?P<slug>[a-zA-Z0-9-]+)', ['methods' => 'GET', 'callback' => [$page_controller, 'get_page'], 'permission_callback' => $permission_auth]);
+        $achievement_details = ['key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward];
+        $this->action_log_service->record($user_id, 'achievement_unlocked', 0, $achievement_details);
     }
 }
 </file>
@@ -7281,17 +7152,261 @@ function canna_get_custom_fields_definitions(): array {
 }
 </file>
 
+<file path="includes/CannaRewards/CannaRewardsEngine.php">
+<?php
+namespace CannaRewards;
+
+use CannaRewards\Admin\AdminMenu;
+use CannaRewards\Admin\AchievementMetabox;
+use CannaRewards\Admin\CustomFieldMetabox;
+use CannaRewards\Admin\ProductMetabox;
+use CannaRewards\Admin\TriggerMetabox;
+use CannaRewards\Admin\UserProfile;
+use CannaRewards\Api;
+use CannaRewards\Services;
+use CannaRewards\Includes\DB;
+use CannaRewards\Includes\Integrations;
+use Psr\Container\ContainerInterface;
+
+final class CannaRewardsEngine {
+    private static $instance;
+    private ContainerInterface $container;
+
+    public static function instance(ContainerInterface $container = null) {
+        if (is_null(self::$instance)) {
+            if (is_null($container)) {
+                throw new \Exception("Container not provided to CannaRewardsEngine");
+            }
+            self::$instance = new self($container);
+        }
+        return self::$instance;
+    }
+
+    public function __construct(ContainerInterface $container) {
+        $this->container = $container;
+        add_action('plugins_loaded', [$this, 'init']);
+    }
+    
+    public function init() {
+        Integrations::init();
+
+        if (!class_exists('WooCommerce')) {
+            add_action('admin_notices', function() {
+                echo '<div class="error"><p><strong>CannaRewards Engine Warning:</strong> WooCommerce is not installed or active.</p></div>';
+            });
+            return;
+        }
+
+        $this->init_wordpress_components();
+        // "Wake up" the GamificationService to ensure its event listeners are registered.
+        $this->container->get(Services\GamificationService::class);
+    }
+    
+    private function init_wordpress_components() {
+        AdminMenu::init();
+        UserProfile::init();
+        ProductMetabox::init();
+        new AchievementMetabox();
+        new CustomFieldMetabox();
+        new TriggerMetabox();
+        
+        add_action('init', 'canna_register_rank_post_type', 0);
+        add_action('init', 'canna_register_achievement_post_type', 0);
+        add_action('init', 'canna_register_custom_field_post_type', 0);
+        add_action('init', 'canna_register_trigger_post_type', 0);
+        
+        add_action('rest_api_init', [$this, 'register_rest_routes']);
+        
+        register_activation_hook(CANNA_PLUGIN_FILE, [DB::class, 'activate']);
+    }
+
+    public function register_rest_routes() {
+        $v2_namespace = 'rewards/v2';
+        $v1_namespace = 'rewards/v1';
+        $permission_public = '__return_true';
+        $permission_auth   = fn() => is_user_logged_in();
+        $permission_admin  = function(\WP_REST_Request $request) {
+            $nonce = $request->get_header('X-WP-Nonce');
+            return wp_verify_nonce($nonce, 'wp_rest') && current_user_can('manage_options');
+        };
+
+        // --- ADMIN-ONLY ENDPOINTS ---
+        register_rest_route($v2_namespace, '/rules/conditions', [
+            'methods' => 'GET',
+            'callback' => [$this->container->get(Api\RulesController::class), 'get_conditions'],
+            'permission_callback' => $permission_admin
+        ]);
+
+        // --- PUBLIC & AUTHENTICATED ENDPOINTS ---
+        register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$this->container->get(Api\UnauthenticatedDataController::class), 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_with_token'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/register', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_user'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/auth/login', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'login_user'], 'permission_callback' => $permission_public]);
+        register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'request_password_reset'], 'permission_callback' => $permission_public]);
+        register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'perform_password_reset'], 'permission_callback' => $permission_public]);
+        register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$this->container->get(Services\ConfigService::class), 'get_app_config'], 'permission_callback' => $permission_auth]);
+        
+        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() { 
+            $user_service = $this->container->get(Services\UserService::class);
+            $session_dto = $user_service->get_user_session_data(get_current_user_id());
+            return Api\ApiResponse::success((array) $session_dto);
+        }, 'permission_callback' => $permission_auth]);
+        
+        register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_claim'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$this->container->get(Api\RedeemController::class), 'process_redemption'], 'permission_callback' => $permission_auth]);
+        
+        register_rest_route($v2_namespace, '/users/me/profile', [
+            ['methods' => 'GET', 'callback' => [$this->container->get(Api\ProfileController::class), 'get_profile'], 'permission_callback' => $permission_auth], 
+            ['methods' => 'POST', 'callback' => [$this->container->get(Api\ProfileController::class), 'update_profile'], 'permission_callback' => $permission_auth]
+        ]);
+        
+        register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$this->container->get(Api\HistoryController::class), 'get_history'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/users/me/orders', ['methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/users/me/referrals', ['methods' => 'GET', 'callback' => [$this->container->get(Api\ReferralController::class), 'get_my_referrals'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/catalog/products', ['methods' => 'GET', 'callback' => [$this->container->get(Api\CatalogController::class), 'get_products'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/catalog/products/(?P<id>[\d]+)', ['methods' => 'GET', 'callback' => [$this->container->get(Api\CatalogController::class), 'get_product'], 'permission_callback' => $permission_auth]);
+        register_rest_route($v2_namespace, '/pages/(?P<slug>[a-zA-Z0-9-]+)', ['methods' => 'GET', 'callback' => [$this->container->get(Api\PageController::class), 'get_page'], 'permission_callback' => $permission_auth]);
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Services/EconomyService.php">
+<?php
+namespace CannaRewards\Services;
+
+use CannaRewards\Includes\Event;
+use CannaRewards\Repositories\RewardCodeRepository;
+use CannaRewards\Repositories\ProductRepository;
+use Exception;
+use Psr\Container\ContainerInterface;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * Economy Service (A Pure Command Bus)
+ */
+class EconomyService {
+    private ActionLogService $action_log_service;
+    private ContextBuilderService $context_builder;
+    private ?UserService $user_service = null;
+    private array $command_map = [];
+    private RewardCodeRepository $reward_code_repository;
+    private ProductRepository $product_repository;
+    private array $policy_map = [];
+    private ContainerInterface $container;
+    private RankService $rankService;
+
+    public function __construct(
+        ActionLogService $action_log_service,
+        ContextBuilderService $context_builder,
+        RewardCodeRepository $reward_code_repository,
+        ProductRepository $product_repository,
+        ContainerInterface $container,
+        array $policy_map,
+        RankService $rankService
+    ) {
+        $this->action_log_service = $action_log_service;
+        $this->context_builder    = $context_builder;
+        $this->reward_code_repository = $reward_code_repository;
+        $this->product_repository = $product_repository;
+        $this->container = $container;
+        $this->policy_map = $policy_map;
+        $this->rankService = $rankService;
+
+        // Listen for the event broadcast by other services like ReferralService.
+        Event::listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
+    }
+
+    /**
+     * Handles the event to grant points by dispatching the secure command.
+     */
+    public function handle_grant_points_event(array $payload) {
+        if (isset($payload['user_id'], $payload['points'], $payload['description'])) {
+            $command = new \CannaRewards\Commands\GrantPointsCommand(
+                (int) $payload['user_id'],
+                (int) $payload['points'],
+                (string) $payload['description']
+            );
+            $this->handle($command);
+        }
+    }
+
+    public function set_user_service(UserService $user_service) {
+        $this->user_service = $user_service;
+    }
+
+    public function registerCommandHandler(string $command_class, object $handler_instance): void {
+        $this->command_map[$command_class] = $handler_instance;
+    }
+
+    public function handle($command) {
+        $command_class = get_class($command);
+
+        $policies_for_command = $this->policy_map[$command_class] ?? [];
+        foreach ($policies_for_command as $policy_class) {
+            $policy = $this->container->get($policy_class);
+            $policy->check($command);
+        }
+
+        if (!isset($this->command_map[$command_class])) {
+            throw new Exception("No handler registered for command: {$command_class}");
+        }
+        $handler = $this->command_map[$command_class];
+
+        if (method_exists($handler, 'setEconomyService')) {
+            $handler->setEconomyService($this);
+        }
+
+        return $handler->handle($command);
+    }
+
+    /**
+     * Checks for rank transitions. This method is public so the
+     * GrantPointsCommandHandler can call it.
+     */
+    public function check_and_apply_rank_transition( int $user_id ) {
+        $current_rank_key = get_user_meta( $user_id, '_canna_current_rank_key', true ) ?: 'member';
+        
+        $new_rank_dto = $this->rankService->getUserRank($user_id);
+        $new_rank_key = $new_rank_dto->key;
+
+        if ( $new_rank_key !== $current_rank_key ) {
+            update_user_meta( $user_id, '_canna_current_rank_key', $new_rank_key );
+            
+            $all_ranks_dtos = $this->rankService->getRankStructure();
+            $all_ranks = array_reduce($all_ranks_dtos, function ($carry, $item) {
+                $carry[$item->key] = (array) $item;
+                return $carry;
+            }, []);
+            
+            $old_rank_object = $all_ranks[ $current_rank_key ] ?? null;
+            $new_rank_object = $all_ranks[ $new_rank_key ] ?? null;
+            
+            $context = $this->context_builder->build_event_context($user_id);
+
+            Event::broadcast('user_rank_changed', array_merge($context, [
+                'old_rank' => $old_rank_object,
+                'new_rank' => $new_rank_object,
+            ]));
+        }
+    }
+}
+</file>
+
 <file path="includes/CannaRewards/Services/UserService.php">
 <?php
 namespace CannaRewards\Services;
 
-use CannaRewards\Commands\CreateUserCommand;
-use CannaRewards\Commands\UpdateProfileCommand;
 use CannaRewards\DTO\FullProfileDTO;
 use CannaRewards\DTO\RankDTO;
 use CannaRewards\DTO\SessionUserDTO;
 use CannaRewards\DTO\ShippingAddressDTO;
 use Exception;
+use Psr\Container\ContainerInterface;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -7307,13 +7422,13 @@ class UserService {
     private ActionLogService $action_log_service;
     private ?ReferralService $referral_service = null;
     private array $policy_map = [];
-    private \CannaRewards\Container\DIContainer $container;
+    private ContainerInterface $container;
     private RankService $rankService;
 
     public function __construct(
         CDPService $cdp_service,
         ActionLogService $action_log_service,
-        \CannaRewards\Container\DIContainer $container,
+        ContainerInterface $container,
         array $policy_map,
         RankService $rankService
     ) {
@@ -7385,9 +7500,6 @@ class UserService {
         return $session_dto;
     }
     
-    /**
-     * Gets the complete profile data for a user, including all custom fields.
-     */
     public function get_full_profile_data( int $user_id ): FullProfileDTO {
         $user = get_userdata($user_id);
         if (!$user) {
@@ -7416,7 +7528,7 @@ class UserService {
         $profile_dto->phone_number = get_user_meta($user_id, 'phone_number', true);
         $profile_dto->referral_code = get_user_meta($user_id, '_canna_referral_code', true);
         $profile_dto->shipping_address = $shipping_dto;
-        // $profile_dto->unlocked_achievement_keys = ... // This would come from AchievementRepository in the future
+        $profile_dto->unlocked_achievement_keys = [];
         $profile_dto->custom_fields = (object) [
             'definitions' => $custom_fields_definitions,
             'values'      => (object) $custom_fields_values,
@@ -7425,149 +7537,10 @@ class UserService {
         return $profile_dto;
     }
 
-    /**
-     * Gets the dynamic data needed for the main user dashboard.
-     */
     public function get_user_dashboard_data( int $user_id ): array {
         return [
             'lifetime_points' => get_user_lifetime_points( $user_id ),
         ];
-    }
-}
-</file>
-
-<file path="includes/CannaRewards/Container/DIContainer.php">
-<?php
-namespace CannaRewards\Container;
-
-use CannaRewards\Repositories;
-use CannaRewards\Services;
-use CannaRewards\Commands;
-use CannaRewards\Policies;
-use CannaRewards\Api;
-
-class DIContainer {
-    private $registry = [];
-
-    public function __construct() {
-        $this->bootstrap();
-    }
-
-    public function get(string $class_name) {
-        if (!isset($this->registry[$class_name])) {
-            throw new \Exception("Service not found in container: " . $class_name);
-        }
-        return $this->registry[$class_name];
-    }
-
-    private function bootstrap(): void {
-        // --- PHASE 1: REPOSITORIES (No dependencies) ---
-        $this->registry[Repositories\UserRepository::class] = new Repositories\UserRepository();
-        $this->registry[Repositories\ActionLogRepository::class] = new Repositories\ActionLogRepository();
-        $this->registry[Repositories\AchievementRepository::class] = new Repositories\AchievementRepository();
-        $this->registry[Repositories\OrderRepository::class] = new Repositories\OrderRepository();
-        $this->registry[Repositories\ProductRepository::class] = new Repositories\ProductRepository();
-        $this->registry[Repositories\RewardCodeRepository::class] = new Repositories\RewardCodeRepository();
-        
-        // --- PHASE 2: POLICIES (Depend on Repositories) ---
-        $this->registry[Policies\UserCanAffordRedemptionPolicy::class] = new Policies\UserCanAffordRedemptionPolicy(
-            $this->get(Repositories\ProductRepository::class),
-            $this->get(Repositories\UserRepository::class)
-        );
-        $this->registry[Policies\UserAccountIsUniquePolicy::class] = new Policies\UserAccountIsUniquePolicy();
-
-        // --- PHASE 3: FOUNDATIONAL SERVICES (Depend on Repositories or nothing) ---
-        $this->registry[Services\RankService::class] = new Services\RankService($this->get(Repositories\UserRepository::class));
-        $this->registry[Services\RuleConditionRegistryService::class] = new Services\RuleConditionRegistryService($this->get(Services\RankService::class));
-        $this->registry[Services\RulesEngineService::class] = new Services\RulesEngineService();
-        $this->registry[Services\ActionLogService::class] = new Services\ActionLogService();
-        $this->registry[Services\ContentService::class] = new Services\ContentService();
-        $this->registry[Services\ContextBuilderService::class] = new Services\ContextBuilderService($this->get(Services\RankService::class));
-        $this->registry[Services\EventFactory::class] = new Services\EventFactory($this->get(Services\ContextBuilderService::class));
-        $this->registry[Services\CDPService::class] = new Services\CDPService($this->get(Services\RankService::class));
-        $this->registry[Services\ConfigService::class] = new Services\ConfigService($this->get(Services\RankService::class));
-        
-        // --- PHASE 4: COMPLEX SERVICES (Depend on other Services) ---
-        $user_policy_map = [ Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, ], ];
-        $user_service = new Services\UserService(
-            $this->get(Services\CDPService::class),
-            $this->get(Services\ActionLogService::class),
-            $this,
-            $user_policy_map,
-            $this->get(Services\RankService::class)
-        );
-        $this->registry[Services\UserService::class] = $user_service;
-
-        $economy_policy_map = [ Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class, ], ];
-        $economy_service = new Services\EconomyService(
-            $this->get(Services\ActionLogService::class),
-            $this->get(Services\ContextBuilderService::class),
-            $this->get(Repositories\RewardCodeRepository::class),
-            $this->get(Repositories\ProductRepository::class),
-            $this,
-            $economy_policy_map,
-            $this->get(Services\RankService::class)
-        );
-        $this->registry[Services\EconomyService::class] = $economy_service;
-
-        $referral_service = new Services\ReferralService($economy_service, $this->get(Services\CDPService::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\ActionLogRepository::class));
-        $this->registry[Services\ReferralService::class] = $referral_service;
-        
-        $gamification_service = new Services\GamificationService(
-            $economy_service,
-            $this->get(Services\ActionLogService::class),
-            $this->get(Repositories\AchievementRepository::class),
-            $this->get(Repositories\ActionLogRepository::class),
-            $this->get(Services\RulesEngineService::class)
-        );
-        $this->registry[Services\GamificationService::class] = $gamification_service;
-
-        // --- PHASE 5: RESOLVE CIRCULAR DEPENDENCIES ---
-        $economy_service->set_user_service($user_service);
-        $user_service->set_referral_service($referral_service);
-
-        // --- PHASE 6: COMMAND HANDLERS (Depend on Services) ---
-        $create_user_handler = new Commands\CreateUserCommandHandler($this->get(Repositories\UserRepository::class), $this->get(Services\CDPService::class));
-        $create_user_handler->setReferralService($referral_service);
-        $user_service->registerCommandHandler(Commands\CreateUserCommand::class, $create_user_handler);
-        
-        $update_user_handler = new Commands\UpdateProfileCommandHandler($this->get(Services\ActionLogService::class), $this->get(Services\CDPService::class), $this->get(Repositories\UserRepository::class));
-        $user_service->registerCommandHandler(Commands\UpdateProfileCommand::class, $update_user_handler);
-        
-        $redeem_handler = new Commands\RedeemRewardCommandHandler($this->get(Repositories\ProductRepository::class), $this->get(Repositories\UserRepository::class), $this->get(Repositories\OrderRepository::class), $this->get(Services\ActionLogService::class), $this->get(Services\ContextBuilderService::class), $this->get(Repositories\ActionLogRepository::class));
-        $economy_service->registerCommandHandler(Commands\RedeemRewardCommand::class, $redeem_handler);
-        $this->registry[Commands\RedeemRewardCommandHandler::class] = $redeem_handler; 
-        
-        $process_scan_handler = new Commands\ProcessProductScanCommandHandler(
-            $this->get(Repositories\RewardCodeRepository::class), 
-            $this->get(Repositories\ProductRepository::class), 
-            $economy_service, 
-            $this->get(Services\ContextBuilderService::class), 
-            $this->get(Services\ActionLogService::class),
-            $this->get(Repositories\ActionLogRepository::class),
-            $this->get(Commands\RedeemRewardCommandHandler::class),
-            $this->get(Services\EventFactory::class)
-        );
-        $economy_service->registerCommandHandler(Commands\ProcessProductScanCommand::class, $process_scan_handler);
-        
-        $process_unauth_claim_handler = new Commands\ProcessUnauthenticatedClaimCommandHandler($this->get(Repositories\RewardCodeRepository::class), $this->get(Repositories\ProductRepository::class));
-        $economy_service->registerCommandHandler(Commands\ProcessUnauthenticatedClaimCommand::class, $process_unauth_claim_handler);
-        
-        $register_with_token_handler = new Commands\RegisterWithTokenCommandHandler($user_service, $economy_service);
-        $user_service->registerCommandHandler(Commands\RegisterWithTokenCommand::class, $register_with_token_handler);
-
-        // --- PHASE 7: CONTROLLERS (Depend on Services) ---
-        $this->registry[Api\AuthController::class] = new Api\AuthController($this->get(Services\UserService::class));
-        $this->registry[Api\CatalogController::class] = new Api\CatalogController();
-        $this->registry[Api\ClaimController::class] = new Api\ClaimController($this->get(Services\EconomyService::class));
-        $this->registry[Api\HistoryController::class] = new Api\HistoryController($this->get(Services\ActionLogService::class));
-        $this->registry[Api\OrdersController::class] = new Api\OrdersController($this->get(Repositories\OrderRepository::class));
-        $this->registry[Api\PageController::class] = new Api\PageController($this->get(Services\ContentService::class));
-        $this->registry[Api\ProfileController::class] = new Api\ProfileController($this->get(Services\UserService::class));
-        $this->registry[Api\RedeemController::class] = new Api\RedeemController($this->get(Services\EconomyService::class));
-        $this->registry[Api\ReferralController::class] = new Api\ReferralController($this->get(Services\ReferralService::class));
-        $this->registry[Api\RulesController::class] = new Api\RulesController($this->get(Services\RuleConditionRegistryService::class));
-        $this->registry[Api\UnauthenticatedDataController::class] = new Api\UnauthenticatedDataController();
     }
 }
 </file>
@@ -7578,7 +7551,7 @@ class DIContainer {
  * Plugin Name:       CannaRewards Engine
  * Plugin URI:        https://yourwebsite.com/
  * Description:       The all-in-one, self-reliant engine for the CannaRewards PWA.
- * Version:           2.0.0
+ * Version:           2.1.0
  * Author:            Anwar Isbased
  * Author URI:        https://yourwebsite.com/
  * Text Domain:       canna-rewards
@@ -7595,23 +7568,24 @@ if (!defined('WPINC')) {
 define('CANNA_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('CANNA_PLUGIN_FILE', __FILE__);
 
-// 1. Include the Composer Autoloader. This replaces all the old manual require statements.
-// It will automatically find and load all our namespaced classes on demand.
+// 1. Include the Composer Autoloader.
 require_once CANNA_PLUGIN_DIR . 'vendor/autoload.php';
 
-// 2. Include the procedural functions file that doesn't have a class.
-// This is the only manual include we need for our own code.
+// 2. Include the procedural functions file.
 require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
-
-// 3. Use our root namespace for the main engine class.
-use CannaRewards\CannaRewardsEngine;
 
 /**
  * The main function for returning the CannaRewardsEngine instance.
- * It ensures the plugin is a singleton, meaning it only runs once.
+ * It builds the DI container and boots the application.
  */
 function CannaRewards() {
-    return CannaRewardsEngine::instance();
+    // This is the new bootstrap process.
+    // 1. Build the container from our new, smart bootstrap file.
+    $container = require CANNA_PLUGIN_DIR . 'includes/container.php';
+    
+    // 2. Ask the container for the main engine instance.
+    // The CannaRewardsEngine class itself is now managed by the container.
+    return $container->get(CannaRewards\CannaRewardsEngine::class);
 }
 
 // Get the plugin running.

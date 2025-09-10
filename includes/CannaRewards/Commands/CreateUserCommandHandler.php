@@ -1,9 +1,11 @@
 <?php
+// FILE: includes/CannaRewards/Commands/CreateUserCommandHandler.php
+
 namespace CannaRewards\Commands;
 
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Services\ReferralService;
+use CannaRewards\Services\ReferralService; // <-- IMPORT
 use CannaRewards\Services\CDPService;
 use CannaRewards\Includes\Event;
 use Exception;
@@ -11,25 +13,25 @@ use Exception;
 final class CreateUserCommandHandler {
     private $user_repository;
     private $cdp_service;
-    private $referral_service;
+    private $referral_service; // <-- ADD PROPERTY
 
-    public function __construct(UserRepository $user_repository, CDPService $cdp_service) {
+    public function __construct(
+        UserRepository $user_repository,
+        CDPService $cdp_service,
+        ReferralService $referral_service // <-- CHANGE: Dependency is now explicit
+    ) {
         $this->user_repository = $user_repository;
         $this->cdp_service = $cdp_service;
+        $this->referral_service = $referral_service; // <-- CHANGE: Assign in constructor
     }
 
-    public function setReferralService(ReferralService $referral_service): void {
-        $this->referral_service = $referral_service;
-    }
+    // --- CHANGE: The setReferralService() method is completely removed ---
 
     public function handle(CreateUserCommand $command): array {
         if (!get_option('users_can_register')) {
             throw new Exception('User registration is currently disabled.', 503);
         }
 
-        // --- THE PAYOFF ---
-        // The Policy Layer now handles the email existence check.
-        // This handler is now dumber, cleaner, and only knows the "happy path".
         $email_string = (string) $command->email;
 
         if (empty($command->password)) {

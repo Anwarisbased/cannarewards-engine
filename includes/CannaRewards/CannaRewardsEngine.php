@@ -1,4 +1,6 @@
 <?php
+// FILE: includes/CannaRewards/CannaRewardsEngine.php
+
 namespace CannaRewards;
 
 use CannaRewards\Admin\AdminMenu;
@@ -14,25 +16,18 @@ use CannaRewards\Includes\Integrations;
 use Psr\Container\ContainerInterface;
 
 final class CannaRewardsEngine {
-    private static $instance;
     private ContainerInterface $container;
-
-    public static function instance(ContainerInterface $container = null) {
-        if (is_null(self::$instance)) {
-            if (is_null($container)) {
-                throw new \Exception("Container not provided to CannaRewardsEngine");
-            }
-            self::$instance = new self($container);
-        }
-        return self::$instance;
-    }
 
     public function __construct(ContainerInterface $container) {
         $this->container = $container;
-        add_action('plugins_loaded', [$this, 'init']);
+        // --- FIX: Changed hook from 'plugins_loaded' to 'init' ---
+        // This is a safer hook that ensures all plugins, including WooCommerce, are loaded
+        // and ready before our services are instantiated. This resolves the timing notice.
+        add_action('init', [$this, 'init']);
     }
     
     public function init() {
+        // Note: The Integrations::init() is now called from here too, for consistency.
         Integrations::init();
 
         if (!class_exists('WooCommerce')) {
@@ -43,8 +38,9 @@ final class CannaRewardsEngine {
         }
 
         $this->init_wordpress_components();
-        // "Wake up" the GamificationService to ensure its event listeners are registered.
+        // "Wake up" the services to ensure their event listeners are registered.
         $this->container->get(Services\GamificationService::class);
+        $this->container->get(Services\EconomyService::class);
     }
     
     private function init_wordpress_components() {
@@ -55,6 +51,7 @@ final class CannaRewardsEngine {
         new CustomFieldMetabox();
         new TriggerMetabox();
         
+        // These are already hooked to 'init', so they are fine.
         add_action('init', 'canna_register_rank_post_type', 0);
         add_action('init', 'canna_register_achievement_post_type', 0);
         add_action('init', 'canna_register_custom_field_post_type', 0);

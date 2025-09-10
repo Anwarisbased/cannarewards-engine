@@ -1,10 +1,12 @@
 <?php
+// FILE: includes/CannaRewards/Commands/GrantPointsCommandHandler.php
+
 namespace CannaRewards\Commands;
 
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Services\ActionLogService;
-use CannaRewards\Services\EconomyService;
 use CannaRewards\Services\RankService;
+use CannaRewards\Includes\Event; // <-- IMPORT THE EVENT CLASS
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -18,30 +20,22 @@ final class GrantPointsCommandHandler {
     private UserRepository $userRepository;
     private ActionLogService $actionLogService;
     private RankService $rankService;
-    private EconomyService $economyService;
 
     public function __construct(
         UserRepository $userRepository,
         ActionLogService $actionLogService,
         RankService $rankService
+        // --- CHANGE: No longer depends on EconomyService ---
     ) {
         $this->userRepository = $userRepository;
         $this->actionLogService = $actionLogService;
         $this->rankService = $rankService;
     }
 
-    /**
-     * This setter is used by the DI container to resolve a circular dependency.
-     * The handler needs the EconomyService to check for rank transitions,
-     * and the EconomyService needs this handler.
-     */
-    public function setEconomyService(EconomyService $economyService): void {
-        $this->economyService = $economyService;
-    }
+    // --- CHANGE: The setEconomyService() method is completely removed ---
 
     /**
      * Executes the point-granting logic.
-     * This logic is identical to the old EconomyService::grant_points method.
      */
     public function handle(GrantPointsCommand $command): array {
         $user_rank_dto    = $this->rankService->getUserRank($command->user_id);
@@ -67,8 +61,12 @@ final class GrantPointsCommandHandler {
         ];
         $this->actionLogService->record( $command->user_id, 'points_granted', 0, $log_meta_data );
 
-        // After granting points, check if the user's rank has changed.
-        $this->economyService->check_and_apply_rank_transition($command->user_id);
+        // --- CHANGE: Instead of calling the service, broadcast an event ---
+        // This decouples the handler from the service, breaking the circular dependency.
+        Event::broadcast('user_points_granted', [
+            'user_id' => $command->user_id
+        ]);
+        // --- END CHANGE ---
 
         return [
             'points_earned'      => $points_to_grant,

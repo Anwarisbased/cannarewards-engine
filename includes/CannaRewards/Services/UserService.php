@@ -1,4 +1,6 @@
 <?php
+// FILE: includes/CannaRewards/Services/UserService.php
+
 namespace CannaRewards\Services;
 
 use CannaRewards\DTO\FullProfileDTO;
@@ -18,33 +20,28 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class UserService {
     private array $command_map = [];
-    private CDPService $cdp_service;
-    private ActionLogService $action_log_service;
-    private ?ReferralService $referral_service = null;
-    private array $policy_map = [];
     private ContainerInterface $container;
+    private array $policy_map = [];
     private RankService $rankService;
 
     public function __construct(
-        CDPService $cdp_service,
-        ActionLogService $action_log_service,
         ContainerInterface $container,
         array $policy_map,
         RankService $rankService
     ) {
-        $this->cdp_service = $cdp_service;
-        $this->action_log_service = $action_log_service;
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
+        
+        $this->registerCommandHandlers();
     }
 
-    public function set_referral_service(ReferralService $referral_service): void {
-        $this->referral_service = $referral_service;
-    }
-    
-    public function registerCommandHandler(string $command_class, object $handler_instance): void {
-        $this->command_map[$command_class] = $handler_instance;
+    private function registerCommandHandlers(): void {
+        $this->command_map = [
+            \CannaRewards\Commands\CreateUserCommand::class => \CannaRewards\Commands\CreateUserCommandHandler::class,
+            \CannaRewards\Commands\UpdateProfileCommand::class => \CannaRewards\Commands\UpdateProfileCommandHandler::class,
+            \CannaRewards\Commands\RegisterWithTokenCommand::class => \CannaRewards\Commands\RegisterWithTokenCommandHandler::class,
+        ];
     }
 
     public function handle($command) {
@@ -59,11 +56,9 @@ class UserService {
         if (!isset($this->command_map[$command_class])) {
             throw new Exception("No handler registered for user command: {$command_class}");
         }
-        $handler = $this->command_map[$command_class];
-
-        if (method_exists($handler, 'setReferralService')) {
-            $handler->setReferralService($this->referral_service);
-        }
+        
+        $handler_class = $this->command_map[$command_class];
+        $handler = $this->container->get($handler_class);
 
         return $handler->handle($command);
     }
@@ -82,6 +77,7 @@ class UserService {
             'shipping_address_1'  => get_user_meta($user_id, 'shipping_address_1', true),
             'shipping_city'       => get_user_meta($user_id, 'shipping_city', true),
             'shipping_state'      => get_user_meta($user_id, 'shipping_state', true),
+            // --- FIX: Corrected the typo here ---
             'shipping_postcode'   => get_user_meta($user_id, 'shipping_postcode', true),
         ];
 

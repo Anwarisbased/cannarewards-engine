@@ -1,9 +1,9 @@
 <?php
+// FILE: includes/CannaRewards/Services/EconomyService.php
+
 namespace CannaRewards\Services;
 
 use CannaRewards\Includes\Event;
-use CannaRewards\Repositories\RewardCodeRepository;
-use CannaRewards\Repositories\ProductRepository;
 use Exception;
 use Psr\Container\ContainerInterface;
 
@@ -16,39 +16,32 @@ if ( ! defined( 'WPINC' ) ) {
  * Economy Service (A Pure Command Bus)
  */
 class EconomyService {
-    private ActionLogService $action_log_service;
     private ContextBuilderService $context_builder;
-    private ?UserService $user_service = null;
     private array $command_map = [];
-    private RewardCodeRepository $reward_code_repository;
-    private ProductRepository $product_repository;
     private array $policy_map = [];
     private ContainerInterface $container;
     private RankService $rankService;
 
     public function __construct(
-        ActionLogService $action_log_service,
         ContextBuilderService $context_builder,
-        RewardCodeRepository $reward_code_repository,
-        ProductRepository $product_repository,
         ContainerInterface $container,
         array $policy_map,
         RankService $rankService
     ) {
-        $this->action_log_service = $action_log_service;
         $this->context_builder    = $context_builder;
-        $this->reward_code_repository = $reward_code_repository;
-        $this->product_repository = $product_repository;
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
 
-        // Listen for the event broadcast by other services like ReferralService.
         Event::listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
+        Event::listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
+        
+        $this->registerCommandHandlers();
     }
 
     /**
      * Handles the event to grant points by dispatching the secure command.
+     * THIS MUST BE PUBLIC TO BE AN EVENT LISTENER.
      */
     public function handle_grant_points_event(array $payload) {
         if (isset($payload['user_id'], $payload['points'], $payload['description'])) {
@@ -61,14 +54,15 @@ class EconomyService {
         }
     }
 
-    public function set_user_service(UserService $user_service) {
-        $this->user_service = $user_service;
+    private function registerCommandHandlers(): void {
+        $this->command_map = [
+            \CannaRewards\Commands\GrantPointsCommand::class => \CannaRewards\Commands\GrantPointsCommandHandler::class,
+            \CannaRewards\Commands\RedeemRewardCommand::class => \CannaRewards\Commands\RedeemRewardCommandHandler::class,
+            \CannaRewards\Commands\ProcessProductScanCommand::class => \CannaRewards\Commands\ProcessProductScanCommandHandler::class,
+            \CannaRewards\Commands\ProcessUnauthenticatedClaimCommand::class => \CannaRewards\Commands\ProcessUnauthenticatedClaimCommandHandler::class,
+        ];
     }
-
-    public function registerCommandHandler(string $command_class, object $handler_instance): void {
-        $this->command_map[$command_class] = $handler_instance;
-    }
-
+    
     public function handle($command) {
         $command_class = get_class($command);
 
@@ -81,22 +75,24 @@ class EconomyService {
         if (!isset($this->command_map[$command_class])) {
             throw new Exception("No handler registered for command: {$command_class}");
         }
-        $handler = $this->command_map[$command_class];
-
-        if (method_exists($handler, 'setEconomyService')) {
-            $handler->setEconomyService($this);
-        }
+        
+        $handler_class = $this->command_map[$command_class];
+        $handler = $this->container->get($handler_class);
 
         return $handler->handle($command);
     }
-
+    
     /**
-     * Checks for rank transitions. This method is public so the
-     * GrantPointsCommandHandler can call it.
+     * Checks for rank transitions. This is an event handler.
+     * THIS MUST BE PUBLIC TO BE AN EVENT LISTENER.
      */
-    public function check_and_apply_rank_transition( int $user_id ) {
+    public function handleRankTransitionCheck(array $payload) {
+        $user_id = $payload['user_id'] ?? 0;
+        if ($user_id <= 0) {
+            return;
+        }
+
         $current_rank_key = get_user_meta( $user_id, '_canna_current_rank_key', true ) ?: 'member';
-        
         $new_rank_dto = $this->rankService->getUserRank($user_id);
         $new_rank_key = $new_rank_dto->key;
 
