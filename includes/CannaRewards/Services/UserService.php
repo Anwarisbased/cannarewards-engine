@@ -1,6 +1,4 @@
 <?php
-// FILE: includes/CannaRewards/Services/UserService.php
-
 namespace CannaRewards\Services;
 
 use CannaRewards\DTO\FullProfileDTO;
@@ -18,7 +16,7 @@ if ( ! defined( 'WPINC' ) ) {
 /**
  * User Service (Command Bus & Data Fetcher)
  */
-class UserService {
+final class UserService {
     private array $command_map = [];
     private ContainerInterface $container;
     private array $policy_map = [];
@@ -77,7 +75,6 @@ class UserService {
             'shipping_address_1'  => get_user_meta($user_id, 'shipping_address_1', true),
             'shipping_city'       => get_user_meta($user_id, 'shipping_city', true),
             'shipping_state'      => get_user_meta($user_id, 'shipping_state', true),
-            // --- FIX: Corrected the typo here ---
             'shipping_postcode'   => get_user_meta($user_id, 'shipping_postcode', true),
         ];
 

@@ -1,3 +1,4 @@
+// File: tests-api/api-contract-validator.js (NEW)
 import Ajv from 'ajv';
 import addFormats from 'ajv-formats';
 import yaml from 'js-yaml';
@@ -8,15 +9,14 @@ import path from 'path';
 const specPath = path.resolve(__dirname, '../docs/openapi spec/notayaml.md');
 const spec = yaml.load(fs.readFileSync(specPath, 'utf8'));
 
-// --- THIS IS THE FIX ---
-// We add `{ strict: false }` to tell the validator to ignore non-standard
-// keywords like "example" that are common in OpenAPI specs.
+// The validator instance. { strict: false } tells it to ignore non-standard
+// keywords like "example" which are common in OpenAPI specs but not part of JSON Schema.
 const ajv = new Ajv({ strict: false, allErrors: true });
 addFormats(ajv); // For formats like 'email', 'uri', etc.
 
 /**
- * A helper function to resolve local $ref pointers in a schema against the main OpenAPI spec.
- * This is necessary for validating complex objects.
+ * A helper to resolve local $ref pointers in a schema against the main OpenAPI spec.
+ * This is necessary for validating complex objects defined in the 'components' section.
  * @param {object} schema - The schema object that may contain $refs.
  * @param {object} openApiSpec - The entire parsed OpenAPI specification.
  * @returns {object} A schema with all $refs resolved.
@@ -30,7 +30,7 @@ function resolveRefs(schema, openApiSpec) {
         const refPath = schema.$ref.replace('#/components/', '').split('/');
         let resolved = openApiSpec.components;
         refPath.forEach(p => { resolved = resolved[p]; });
-        return resolveRefs(resolved, openApiSpec); // Recursively resolve refs in the referenced component
+        return resolveRefs(resolved, openApiSpec); // Recursively resolve refs
     }
 
     const newSchema = Array.isArray(schema) ? [] : {};
@@ -67,7 +67,7 @@ export async function validateApiContract(response, endpointPath, method) {
 
     const schema = responseSpec.content?.['application/json']?.schema;
     if (!schema) {
-        // If the spec defines no response body for this status code, we pass.
+        // If the spec defines no response body for this status code, and we didn't get one, we pass.
         if (responseBody === null || Object.keys(responseBody).length === 0) {
             return true;
         }

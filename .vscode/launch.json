@@ -7,9 +7,10 @@
             "request": "launch",
             "port": 9003,
             "pathMappings": {
-                "/app/public/wp-content/plugins/cannarewards-engine": "${workspaceFolder}"
-            },
-            "log": true
+                // This is the corrected path. It maps the exact path your server sees
+                // to the workspace folder you have open in VS Code.
+                "C:\\Users\\anwar\\Local Sites\\cannarewards-api\\app\\public\\wp-content\\plugins\\cannarewards-engine": "${workspaceFolder}"
+            }
         }
     ]
 }

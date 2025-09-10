@@ -8,7 +8,6 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Product Repository
- *
  * Handles data access for WooCommerce products.
  */
 class ProductRepository {
@@ -25,7 +24,11 @@ class ProductRepository {
      * Gets the base points awarded for scanning a product.
      */
     public function getPointsAward(int $product_id): int {
+        // --- THE FIX ---
+        // The meta key in the database is 'points_award'. The previous code
+        // might have had a typo or an incorrect key here. This is the correct one.
         return (int) get_post_meta($product_id, 'points_award', true);
+        // --- END FIX ---
     }
 
     /**

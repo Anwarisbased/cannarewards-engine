@@ -1,6 +1,4 @@
 <?php
-// FILE: cannarewards-engine.php
-
 /**
  * Plugin Name:       CannaRewards Engine
  * Plugin URI:        https://yourwebsite.com/
@@ -30,14 +28,10 @@ require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
 
 /**
  * The main function for returning the CannaRewards DI Container instance.
- * It builds the DI container and boots the application.
- *
  * @return Psr\Container\ContainerInterface The DI container.
  */
 function CannaRewards() {
-    // Use a static variable to ensure the container is only built once.
     static $container = null;
-
     if (is_null($container)) {
         // Build the self-sufficient DI container from our bootstrap file.
         $container = require CANNA_PLUGIN_DIR . 'includes/container.php';
@@ -45,10 +39,8 @@ function CannaRewards() {
         // Use the container to create the main engine instance, which hooks everything into WordPress.
         $container->get(CannaRewards\CannaRewardsEngine::class);
     }
-
-    // Always return the container itself.
     return $container;
 }
 
-// Get the plugin running by calling the main function once.
+// Get the plugin running.
 CannaRewards();
