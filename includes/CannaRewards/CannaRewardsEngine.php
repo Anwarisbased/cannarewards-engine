@@ -20,14 +20,11 @@ final class CannaRewardsEngine {
 
     public function __construct(ContainerInterface $container) {
         $this->container = $container;
-        // --- FIX: Changed hook from 'plugins_loaded' to 'init' ---
-        // This is a safer hook that ensures all plugins, including WooCommerce, are loaded
-        // and ready before our services are instantiated. This resolves the timing notice.
+        // This version correctly runs on the 'init' hook to prevent timing issues.
         add_action('init', [$this, 'init']);
     }
     
     public function init() {
-        // Note: The Integrations::init() is now called from here too, for consistency.
         Integrations::init();
 
         if (!class_exists('WooCommerce')) {
@@ -38,7 +35,7 @@ final class CannaRewardsEngine {
         }
 
         $this->init_wordpress_components();
-        // "Wake up" the services to ensure their event listeners are registered.
+        // "Wake up" services to register their event listeners.
         $this->container->get(Services\GamificationService::class);
         $this->container->get(Services\EconomyService::class);
     }
@@ -51,11 +48,11 @@ final class CannaRewardsEngine {
         new CustomFieldMetabox();
         new TriggerMetabox();
         
-        // These are already hooked to 'init', so they are fine.
-        add_action('init', 'canna_register_rank_post_type', 0);
-        add_action('init', 'canna_register_achievement_post_type', 0);
-        add_action('init', 'canna_register_custom_field_post_type', 0);
-        add_action('init', 'canna_register_trigger_post_type', 0);
+        // Since this now runs on 'init', we can call the CPT registration functions directly.
+        canna_register_rank_post_type();
+        canna_register_achievement_post_type();
+        canna_register_custom_field_post_type();
+        canna_register_trigger_post_type();
         
         add_action('rest_api_init', [$this, 'register_rest_routes']);
         
@@ -72,14 +69,12 @@ final class CannaRewardsEngine {
             return wp_verify_nonce($nonce, 'wp_rest') && current_user_can('manage_options');
         };
 
-        // --- ADMIN-ONLY ENDPOINTS ---
+        // All routes get their controller instances from the container.
         register_rest_route($v2_namespace, '/rules/conditions', [
             'methods' => 'GET',
             'callback' => [$this->container->get(Api\RulesController::class), 'get_conditions'],
             'permission_callback' => $permission_admin
         ]);
-
-        // --- PUBLIC & AUTHENTICATED ENDPOINTS ---
         register_rest_route($v2_namespace, '/unauthenticated/welcome-reward-preview', ['methods' => 'GET', 'callback' => [$this->container->get(Api\UnauthenticatedDataController::class), 'get_welcome_reward_preview'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/unauthenticated/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_unauthenticated_claim'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/auth/register-with-token', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_with_token'], 'permission_callback' => $permission_public]);
@@ -88,21 +83,10 @@ final class CannaRewardsEngine {
         register_rest_route($v1_namespace, '/password/request', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'request_password_reset'], 'permission_callback' => $permission_public]);
         register_rest_route($v1_namespace, '/password/reset', ['methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'perform_password_reset'], 'permission_callback' => $permission_public]);
         register_rest_route($v2_namespace, '/app/config', ['methods' => 'GET', 'callback' => [$this->container->get(Services\ConfigService::class), 'get_app_config'], 'permission_callback' => $permission_auth]);
-        
-        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() { 
-            $user_service = $this->container->get(Services\UserService::class);
-            $session_dto = $user_service->get_user_session_data(get_current_user_id());
-            return Api\ApiResponse::success((array) $session_dto);
-        }, 'permission_callback' => $permission_auth]);
-        
+        register_rest_route($v2_namespace, '/users/me/session', ['methods' => 'GET', 'callback' => function() { $user_service = $this->container->get(Services\UserService::class); $session_dto = $user_service->get_user_session_data(get_current_user_id()); return Api\ApiResponse::success((array) $session_dto); }, 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/actions/claim', ['methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_claim'], 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/actions/redeem', ['methods' => 'POST', 'callback' => [$this->container->get(Api\RedeemController::class), 'process_redemption'], 'permission_callback' => $permission_auth]);
-        
-        register_rest_route($v2_namespace, '/users/me/profile', [
-            ['methods' => 'GET', 'callback' => [$this->container->get(Api\ProfileController::class), 'get_profile'], 'permission_callback' => $permission_auth], 
-            ['methods' => 'POST', 'callback' => [$this->container->get(Api\ProfileController::class), 'update_profile'], 'permission_callback' => $permission_auth]
-        ]);
-        
+        register_rest_route($v2_namespace, '/users/me/profile', [['methods' => 'GET', 'callback' => [$this->container->get(Api\ProfileController::class), 'get_profile'], 'permission_callback' => $permission_auth], ['methods' => 'POST', 'callback' => [$this->container->get(Api\ProfileController::class), 'update_profile'], 'permission_callback' => $permission_auth]]);
         register_rest_route($v2_namespace, '/users/me/history', ['methods' => 'GET', 'callback' => [$this->container->get(Api\HistoryController::class), 'get_history'], 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/users/me/orders', ['methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth]);
         register_rest_route($v2_namespace, '/users/me/referrals', ['methods' => 'GET', 'callback' => [$this->container->get(Api\ReferralController::class), 'get_my_referrals'], 'permission_callback' => $permission_auth]);

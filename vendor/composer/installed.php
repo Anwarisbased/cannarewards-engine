@@ -3,7 +3,7 @@
         'name' => 'cannarewards/engine',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '9efacf73fbf374129d965eab63aa7e18b19eca53',
+        'reference' => '49f37a87723dc04ab39154a341eecbd7001d9320',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -13,7 +13,7 @@
         'cannarewards/engine' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '9efacf73fbf374129d965eab63aa7e18b19eca53',
+            'reference' => '49f37a87723dc04ab39154a341eecbd7001d9320',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
