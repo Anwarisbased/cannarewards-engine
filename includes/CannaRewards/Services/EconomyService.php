@@ -2,7 +2,7 @@
 namespace CannaRewards\Services;
 
 use CannaRewards\Commands\GrantPointsCommand;
-use CannaRewards\Includes\Event;
+use CannaRewards\Includes\EventBusInterface;
 use Exception;
 use Psr\Container\ContainerInterface;
 
@@ -12,20 +12,24 @@ final class EconomyService {
     private ContainerInterface $container;
     private RankService $rankService;
     private ContextBuilderService $contextBuilder;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
 
     public function __construct(
         ContainerInterface $container,
         array $policy_map,
         RankService $rankService,
-        ContextBuilderService $contextBuilder
+        ContextBuilderService $contextBuilder,
+        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
         $this->contextBuilder = $contextBuilder;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
 
-        Event::listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
-        Event::listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
+        // REFACTOR: Use the injected event bus
+        $this->eventBus->listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
+        $this->eventBus->listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
         
         $this->registerCommandHandlers();
     }
@@ -71,14 +75,21 @@ final class EconomyService {
         $user_id = $payload['user_id'] ?? 0;
         if ($user_id <= 0) return;
 
-        $current_rank_key = get_user_meta($user_id, '_canna_current_rank_key', true) ?: 'member';
+        $current_rank_key = $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getCurrentRankKey($user_id);
         $new_rank_dto = $this->rankService->getUserRank($user_id);
 
         if ($new_rank_dto->key !== $current_rank_key) {
-            update_user_meta($user_id, '_canna_current_rank_key', $new_rank_dto->key);
+            $this->container->get(\CannaRewards\Repositories\UserRepository::class)->savePointsAndRank(
+                $user_id,
+                $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getPointsBalance($user_id),
+                $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getLifetimePoints($user_id),
+                $new_rank_dto->key
+            );
             
             $context = $this->contextBuilder->build_event_context($user_id);
-            Event::broadcast('user_rank_changed', $context);
+            
+            // REFACTOR: Use the injected event bus
+            $this->eventBus->broadcast('user_rank_changed', $context);
         }
     }
 }

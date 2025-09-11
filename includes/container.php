@@ -3,8 +3,14 @@ use CannaRewards\Commands;
 use CannaRewards\Policies;
 use CannaRewards\Services;
 use CannaRewards\CannaRewardsEngine;
+use CannaRewards\Includes\EventBusInterface;
+use CannaRewards\Infrastructure\WordPressEventBus;
 use DI\ContainerBuilder;
 use Psr\Container\ContainerInterface;
+
+use function DI\create;
+use function DI\get;
+use function DI\autowire;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -23,16 +29,26 @@ $containerBuilder->addDefinitions([
         Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class ],
     ],
 
-    // --- EXPLICIT WIRING FOR SERVICES THAT NEED CONFIG ARRAYS ---
-    Services\EconomyService::class => DI\autowire()
-        ->constructorParameter('policy_map', DI\get('economy_policy_map')),
+    // --- INTERFACE BINDING & SINGLETONS ---
+    //
+    // --- THIS IS THE FIX ---
+    // The scope() method was removed. The correct way to define a singleton is
+    // to create the instance once and have the container return that same instance.
+    // The easiest way is to just let the container manage it, and by default,
+    // it will be treated as a singleton for the interface binding.
+    EventBusInterface::class => autowire(WordPressEventBus::class),
+    // --- END FIX ---
 
-    Services\UserService::class => DI\autowire()
-        ->constructorParameter('policy_map', DI\get('user_policy_map')),
+    // --- EXPLICIT WIRING FOR SERVICES THAT NEED CONFIG ARRAYS ---
+    Services\EconomyService::class => autowire()
+        ->constructorParameter('policy_map', get('economy_policy_map')),
+
+    Services\UserService::class => autowire()
+        ->constructorParameter('policy_map', get('user_policy_map')),
     
     // The main engine class is also built by the container.
-    CannaRewardsEngine::class => DI\create(CannaRewardsEngine::class)
-        ->constructor(DI\get(ContainerInterface::class)),
+    CannaRewardsEngine::class => create(CannaRewardsEngine::class)
+        ->constructor(get(ContainerInterface::class)),
         
     // Allow the container to inject itself if needed.
     ContainerInterface::class => fn(ContainerInterface $c) => $c,

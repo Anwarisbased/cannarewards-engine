@@ -1,31 +1,30 @@
 <?php
-// FILE: includes/CannaRewards/Commands/CreateUserCommandHandler.php
-
 namespace CannaRewards\Commands;
 
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Services\ReferralService; // <-- IMPORT
+use CannaRewards\Services\ReferralService;
 use CannaRewards\Services\CDPService;
-use CannaRewards\Includes\Event;
+use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
 use Exception;
 
 final class CreateUserCommandHandler {
     private $user_repository;
     private $cdp_service;
-    private $referral_service; // <-- ADD PROPERTY
+    private $referral_service;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
 
     public function __construct(
         UserRepository $user_repository,
         CDPService $cdp_service,
-        ReferralService $referral_service // <-- CHANGE: Dependency is now explicit
+        ReferralService $referral_service,
+        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
     ) {
         $this->user_repository = $user_repository;
         $this->cdp_service = $cdp_service;
-        $this->referral_service = $referral_service; // <-- CHANGE: Assign in constructor
+        $this->referral_service = $referral_service;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
     }
-
-    // --- CHANGE: The setReferralService() method is completely removed ---
 
     public function handle(CreateUserCommand $command): array {
         if (!get_option('users_can_register')) {
@@ -62,7 +61,8 @@ final class CreateUserCommandHandler {
             $this->referral_service->process_new_user_referral($user_id, $command->referral_code);
         }
         
-        Event::broadcast('user_created', ['user_id' => $user_id, 'referral_code' => $command->referral_code]);
+        // REFACTOR: Use the injected event bus
+        $this->eventBus->broadcast('user_created', ['user_id' => $user_id, 'referral_code' => $command->referral_code]);
         $this->cdp_service->track($user_id, 'user_created', ['signup_method' => 'password', 'referral_code_used' => $command->referral_code]);
 
         return ['success' => true, 'message' => 'Registration successful.', 'userId' => $user_id];

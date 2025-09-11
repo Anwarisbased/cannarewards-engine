@@ -7,7 +7,7 @@ use CannaRewards\Repositories\OrderRepository;
 use CannaRewards\Repositories\ActionLogRepository;
 use CannaRewards\Services\ActionLogService;
 use CannaRewards\Services\ContextBuilderService;
-use CannaRewards\Includes\Event;
+use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
 use Exception;
 
 final class RedeemRewardCommandHandler {
@@ -17,15 +17,16 @@ final class RedeemRewardCommandHandler {
     private ActionLogRepository $logRepo;
     private ActionLogService $logService;
     private ContextBuilderService $contextBuilder;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
 
-    // All dependencies are now required by the constructor.
     public function __construct(
         ProductRepository $productRepo,
         UserRepository $userRepo,
         OrderRepository $orderRepo,
         ActionLogService $logService,
         ContextBuilderService $contextBuilder,
-        ActionLogRepository $logRepo
+        ActionLogRepository $logRepo,
+        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
     ) {
         $this->productRepo = $productRepo;
         $this->userRepo = $userRepo;
@@ -33,6 +34,7 @@ final class RedeemRewardCommandHandler {
         $this->logService = $logService;
         $this->contextBuilder = $contextBuilder;
         $this->logRepo = $logRepo;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
     }
 
     public function handle(RedeemRewardCommand $command): array {
@@ -54,7 +56,9 @@ final class RedeemRewardCommandHandler {
         $this->logService->record($user_id, 'redeem', $product_id, $log_meta_data);
         
         $full_context = $this->contextBuilder->build_event_context($user_id, get_post($product_id));
-        Event::broadcast('reward_redeemed', $full_context);
+        
+        // REFACTOR: Use the injected event bus
+        $this->eventBus->broadcast('reward_redeemed', $full_context);
         
         return ['success' => true, 'order_id' => $order_id, 'new_points_balance' => $new_balance];
     }

@@ -2,7 +2,7 @@
 namespace CannaRewards\Services;
 
 use CannaRewards\Commands\GrantPointsCommand;
-use CannaRewards\Includes\Event;
+use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
 use CannaRewards\Repositories\AchievementRepository;
 use CannaRewards\Repositories\ActionLogRepository;
 
@@ -17,23 +17,27 @@ class GamificationService {
     private AchievementRepository $achievement_repository;
     private ActionLogRepository $action_log_repository;
     private RulesEngineService $rules_engine;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
 
     public function __construct(
         EconomyService $economy_service,
         ActionLogService $action_log_service,
         AchievementRepository $achievement_repository,
         ActionLogRepository $action_log_repository,
-        RulesEngineService $rules_engine
+        RulesEngineService $rules_engine,
+        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
     ) {
         $this->economy_service = $economy_service;
         $this->action_log_service = $action_log_service;
         $this->achievement_repository = $achievement_repository;
         $this->action_log_repository = $action_log_repository;
         $this->rules_engine = $rules_engine;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
 
         $events_to_listen_for = ['product_scanned', 'user_rank_changed', 'reward_redeemed'];
         foreach ($events_to_listen_for as $event_name) {
-            Event::listen($event_name, [$this, 'handle_event']);
+            // REFACTOR: Use the injected event bus
+            $this->eventBus->listen($event_name, [$this, 'handle_event']);
         }
     }
 
@@ -80,8 +84,6 @@ class GamificationService {
         
         $points_reward = (int) $achievement->points_reward;
         if ($points_reward > 0) {
-            // --- THIS IS THE FIX ---
-            // Dispatch a command instead of calling the insecure public method.
             $command = new GrantPointsCommand(
                 $user_id,
                 $points_reward,

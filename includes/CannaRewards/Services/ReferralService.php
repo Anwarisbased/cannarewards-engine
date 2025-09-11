@@ -1,7 +1,7 @@
 <?php
 namespace CannaRewards\Services;
 
-use CannaRewards\Includes\Event;
+use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Repositories\ActionLogRepository;
 
@@ -9,17 +9,21 @@ class ReferralService {
     private CDPService $cdp_service;
     private UserRepository $user_repository;
     private ActionLogRepository $action_log_repository;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
 
     public function __construct(
         CDPService $cdp_service,
         UserRepository $user_repository,
-        ActionLogRepository $action_log_repository
+        ActionLogRepository $action_log_repository,
+        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
     ) {
         $this->cdp_service = $cdp_service;
         $this->user_repository = $user_repository;
         $this->action_log_repository = $action_log_repository;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
         
-        Event::listen('product_scanned', [$this, 'handle_referral_conversion']);
+        // REFACTOR: Use the injected event bus
+        $this->eventBus->listen('product_scanned', [$this, 'handle_referral_conversion']);
     }
 
     public function process_new_user_referral(int $new_user_id, string $referral_code) {
@@ -69,7 +73,8 @@ class ReferralService {
             if ($action_type === 'grant_points') {
                 $points_to_grant = (int) $action_value;
                 if ($points_to_grant > 0) {
-                    Event::broadcast('points_to_be_granted', [
+                    // REFACTOR: Use the injected event bus
+                    $this->eventBus->broadcast('points_to_be_granted', [
                         'user_id'     => $user_id,
                         'points'      => $points_to_grant,
                         'description' => $trigger_post->post_title

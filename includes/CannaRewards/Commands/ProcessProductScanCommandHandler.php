@@ -7,7 +7,8 @@ use CannaRewards\Repositories\ActionLogRepository;
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Services\EconomyService;
 use CannaRewards\Services\ActionLogService;
-use CannaRewards\Includes\Event;
+use CannaRewards\Services\ContextBuilderService; // <<<--- IMPORT SERVICE
+use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
 use Exception;
 
 final class ProcessProductScanCommandHandler {
@@ -18,6 +19,8 @@ final class ProcessProductScanCommandHandler {
     private EconomyService $economyService;
     private ActionLogService $logService;
     private RedeemRewardCommandHandler $redeemHandler;
+    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
+    private ContextBuilderService $contextBuilder; // <<<--- ADD PROPERTY
 
     public function __construct(
         RewardCodeRepository $rewardCodeRepo,
@@ -26,7 +29,9 @@ final class ProcessProductScanCommandHandler {
         UserRepository $userRepo,
         EconomyService $economyService,
         ActionLogService $logService,
-        RedeemRewardCommandHandler $redeemHandler
+        RedeemRewardCommandHandler $redeemHandler,
+        EventBusInterface $eventBus, // <<<--- ADD DEPENDENCY
+        ContextBuilderService $contextBuilder // <<<--- ADD DEPENDENCY
     ) {
         $this->rewardCodeRepo = $rewardCodeRepo;
         $this->productRepo = $productRepo;
@@ -35,20 +40,21 @@ final class ProcessProductScanCommandHandler {
         $this->economyService = $economyService;
         $this->logService = $logService;
         $this->redeemHandler = $redeemHandler;
+        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
+        $this->contextBuilder = $contextBuilder; // <<<--- ASSIGN DEPENDENCY
     }
 
     public function handle(ProcessProductScanCommand $command): array {
-
-
         $code_data = $this->rewardCodeRepo->findValidCode($command->code);
-
-
         if (!$code_data) { throw new Exception('This code is invalid or has already been used.'); }
         $product_id = $this->productRepo->findIdBySku($code_data->sku);
         if (!$product_id) { throw new Exception('The product associated with this code could not be found.'); }
-        $scan_count = $this->logRepo->countUserActions($command->user_id, 'scan');
-        $is_first_scan = ($scan_count === 0);
+        
+        // We log the scan first to ensure the count is correct for the first-scan check
         $this->logService->record($command->user_id, 'scan', $product_id);
+        $scan_count = $this->logRepo->countUserActions($command->user_id, 'scan');
+        $is_first_scan = ($scan_count === 1);
+
         $product_name = get_the_title($product_id);
         $points_result = ['points_earned' => 0, 'new_points_balance' => $this->userRepo->getPointsBalance($command->user_id)];
         $message = '';
@@ -69,7 +75,12 @@ final class ProcessProductScanCommandHandler {
             }
         }
         $this->rewardCodeRepo->markCodeAsUsed($code_data->id, $command->user_id);
-        Event::broadcast('product_scanned', ['user_id' => $command->user_id, 'product_id' => $product_id]);
+        
+        // REFACTOR: Build context and use the injected event bus
+        $context = $this->contextBuilder->build_event_context($command->user_id, get_post($product_id));
+        $context['is_first_scan'] = $is_first_scan;
+        $this->eventBus->broadcast('product_scanned', $context);
+        
         return ['success' => true, 'message' => $message] + $points_result;
     }
 }
