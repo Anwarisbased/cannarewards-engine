@@ -22,6 +22,14 @@ class UserRepository {
         $this->wp = $wp;
     }
     
+    /**
+     * A generic proxy to the wrapper for fetching user meta.
+     * Services should use this instead of accessing the wrapper directly for user data.
+     */
+    public function getUserMeta(int $user_id, string $key, bool $single = true) {
+        return $this->wp->getUserMeta($user_id, $key, $single);
+    }
+
     public function getPointsBalance(int $user_id): int {
         $balance = $this->wp->getUserMeta($user_id, '_canna_points_balance', true);
         return empty($balance) ? 0 : (int) $balance;
