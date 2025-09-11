@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Repositories;
 
+use CannaRewards\Infrastructure\WordPressApiWrapper;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -8,22 +10,23 @@ if ( ! defined( 'WPINC' ) ) {
 
 /**
  * Action Log Repository
- *
  * Handles all data access logic for the user action log table.
  */
 class ActionLogRepository {
+    private WordPressApiWrapper $wp;
 
-    /**
-     * Counts the number of times a user has performed a specific action.
-     */
+    public function __construct(WordPressApiWrapper $wp) {
+        $this->wp = $wp;
+    }
+
     public function countUserActions(int $user_id, string $action_type): int {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'canna_user_action_log';
-
-        return (int) $wpdb->get_var($wpdb->prepare(
-            "SELECT COUNT(log_id) FROM {$table_name} WHERE user_id = %d AND action_type = %s",
+        $table_name = 'canna_user_action_log';
+        $query = $this->wp->dbPrepare(
+            "SELECT COUNT(log_id) FROM {$this->wp->db->prefix}{$table_name} WHERE user_id = %d AND action_type = %s",
             $user_id,
             $action_type
-        ));
+        );
+
+        return (int) $this->wp->dbGetVar($query);
     }
 }

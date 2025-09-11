@@ -3,14 +3,16 @@ namespace CannaRewards\Services;
 
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\DTO\RankDTO;
-use WP_Query;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 final class RankService {
     private UserRepository $userRepository;
+    private WordPressApiWrapper $wp;
     private ?array $rankStructureCache = null;
 
-    public function __construct(UserRepository $userRepository) {
+    public function __construct(UserRepository $userRepository, WordPressApiWrapper $wp) {
         $this->userRepository = $userRepository;
+        $this->wp = $wp;
     }
 
     public function getUserRank(int $userId): RankDTO {
@@ -35,7 +37,7 @@ final class RankService {
             return $this->rankStructureCache;
         }
 
-        $cachedRanks = get_transient('canna_rank_structure_dtos');
+        $cachedRanks = $this->wp->getTransient('canna_rank_structure_dtos');
         if (is_array($cachedRanks)) {
             $this->rankStructureCache = $cachedRanks;
             return $this->rankStructureCache;
@@ -48,26 +50,17 @@ final class RankService {
             'meta_key'       => 'points_required',
             'orderby'        => 'meta_value_num',
             'order'          => 'DESC',
-            // --- THE FIX ---
-            // This ensures we only query for ranks that are explicitly published,
-            // ignoring auto-drafts and other statuses.
             'post_status'    => 'publish',
-            // --- END FIX ---
         ];
-        $rankPosts = new WP_Query($args);
+        $rankPosts = $this->wp->getPosts($args);
 
-        if ($rankPosts->have_posts()) {
-            while ($rankPosts->have_posts()) {
-                $rankPosts->the_post();
-                $postId = get_the_ID();
-                $dto = new RankDTO();
-                $dto->key = get_post_field('post_name', $postId);
-                $dto->name = get_the_title();
-                $dto->points = (int) get_post_meta($postId, 'points_required', true);
-                $ranks[] = $dto;
-            }
+        foreach ($rankPosts as $post) {
+            $dto = new RankDTO();
+            $dto->key = $post->post_name;
+            $dto->name = $post->post_title;
+            $dto->points = (int) $this->wp->getPostMeta($post->ID, 'points_required', true);
+            $ranks[] = $dto;
         }
-        wp_reset_postdata();
 
         $memberRank = new RankDTO();
         $memberRank->key = 'member';
@@ -83,7 +76,7 @@ final class RankService {
         }
         $ranks = array_values($uniqueRanks);
 
-        set_transient('canna_rank_structure_dtos', $ranks, 12 * HOUR_IN_SECONDS);
+        $this->wp->setTransient('canna_rank_structure_dtos', $ranks, 12 * HOUR_IN_SECONDS);
         $this->rankStructureCache = $ranks;
 
         return $this->rankStructureCache;

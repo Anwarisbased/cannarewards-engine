@@ -11,7 +11,6 @@ global $wpdb;
 switch ($action) {
 
     /**
-     * --- NEW ACTION ---
      * Directly queries for canna_rank posts to debug timing issues.
      */
     case 'debug_get_ranks':
@@ -26,6 +25,10 @@ switch ($action) {
         echo json_encode(['success' => true, 'ranks_found' => $rank_posts->posts]);
         break;
 
+    /**
+     * Clears the rank structure transient cache. We need to do this
+     * to ensure our tests are always running against fresh data.
+     */
     case 'clear_rank_cache':
         delete_transient('canna_rank_structure_dtos');
         echo json_encode(['success' => true, 'message' => 'Rank structure cache has been cleared.']);
@@ -97,10 +100,13 @@ switch ($action) {
         }
         $user = get_user_by('email', $email);
         if ($user) {
+            // Remove all of their old orders to ensure a clean state
             if (class_exists('WooCommerce')) {
                 $orders = wc_get_orders(['customer' => $email]);
                 foreach ($orders as $order) { $order->delete(true); }
             }
+            
+            // Allow setting points directly from the test.
             if (isset($_POST['points_balance'])) {
                 update_user_meta($user->ID, '_canna_points_balance', absint($_POST['points_balance']));
             }
@@ -109,6 +115,7 @@ switch ($action) {
             }
             echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
         } else {
+            // User doesn't exist, which is a success for a reset.
             echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
         }
         break;

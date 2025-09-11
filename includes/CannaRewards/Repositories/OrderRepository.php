@@ -2,7 +2,9 @@
 namespace CannaRewards\Repositories;
 
 use CannaRewards\DTO\OrderDTO;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 use Exception;
+use WC_Order_Item_Product;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -13,21 +15,21 @@ if ( ! defined( 'WPINC' ) ) {
  * Order Repository
  */
 class OrderRepository {
+    private WordPressApiWrapper $wp;
+
+    public function __construct(WordPressApiWrapper $wp) {
+        $this->wp = $wp;
+    }
     
     public function createFromRedemption(int $user_id, int $product_id, array $shipping_details = []): ?int {
-        if (!function_exists('wc_get_product') || !function_exists('wc_create_order')) {
-            throw new Exception('WooCommerce functions not available in OrderRepository.');
-        }
-
-        $product = wc_get_product($product_id);
+        $product = $this->wp->getProduct($product_id);
         if (!$product) {
             throw new Exception("Could not find product with ID {$product_id} for redemption.");
         }
         
         try {
-            $order = wc_create_order(['customer_id' => $user_id]);
-            
-            if (is_wp_error($order)) {
+            $order = $this->wp->createOrder(['customer_id' => $user_id]);
+            if ($order instanceof \WP_Error) {
                 throw new Exception('wc_create_order() failed. WooCommerce said: ' . $order->get_error_message());
             }
 
@@ -37,19 +39,11 @@ class OrderRepository {
             }
             
             $order->add_product($product, 1);
-            
-            $order->set_shipping_total(0);
-            $order->set_discount_total(0);
-            $order->set_discount_tax(0);
-            $order->set_cart_tax(0);
-            $order->set_shipping_tax(0);
             $order->set_total(0);
-
             $order->update_meta_data('_is_canna_redemption', true);
             $order->update_status('processing', 'Redeemed with CannaRewards points.');
             
             $order_id = $order->save();
-
             if ($order_id === 0) {
                  throw new Exception('$order->save() returned 0, indicating a silent failure.');
             }
@@ -65,11 +59,11 @@ class OrderRepository {
      * @return OrderDTO[]
      */
     public function getUserOrders(int $user_id, int $limit = 50): array {
-        if (!function_exists('wc_get_orders')) {
+        if (!function_exists('wc_get_orders')) { // This is a safe check
             return [];
         }
 
-        $orders = wc_get_orders([
+        $orders = wc_get_orders([ // This one is harder to wrap cleanly, so we'll leave it as a pragmatic exception.
             'customer_id' => $user_id,
             'limit'       => $limit,
             'orderby'     => 'date',
@@ -80,31 +74,27 @@ class OrderRepository {
 
         $formatted_orders = [];
         foreach ($orders as $order) {
-            $items = [];
             $image_url = wc_placeholder_img_src();
             $line_items = $order->get_items();
             
+            $item_names = array_map(fn($item) => $item->get_name(), $line_items);
+
             if (!empty($line_items)) {
+                /** @var WC_Order_Item_Product $first_item */
                 $first_item = reset($line_items);
                 $product_id = $first_item->get_product_id();
-                if ($product_id) {
-                    $product = wc_get_product($product_id);
-                    $image_id = $product ? $product->get_image_id() : 0;
-                    if ($image_id) {
-                        $image_url = wp_get_attachment_image_url($image_id, 'thumbnail');
-                    }
+                $product = $product_id ? $this->wp->getProduct($product_id) : null;
+                $image_id = $product ? $product->get_image_id() : 0;
+                if ($image_id) {
+                    $image_url = wp_get_attachment_image_url($image_id, 'thumbnail');
                 }
-            }
-            
-            foreach ($line_items as $item) {
-                $items[] = $item->get_name();
             }
 
             $dto = new OrderDTO();
             $dto->orderId = $order->get_id();
             $dto->date = $order->get_date_created()->date('Y-m-d');
             $dto->status = ucfirst($order->get_status());
-            $dto->items = implode(', ', $items);
+            $dto->items = implode(', ', $item_names);
             $dto->imageUrl = $image_url;
 
             $formatted_orders[] = $dto;
