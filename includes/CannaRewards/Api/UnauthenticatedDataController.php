@@ -4,6 +4,8 @@ namespace CannaRewards\Api;
 use WP_REST_Request;
 use WP_REST_Response;
 use WP_Error;
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT WRAPPER
+use CannaRewards\Services\ConfigService; // <<<--- IMPORT SERVICE
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -11,21 +13,23 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Unauthenticated Data Controller
  * Provides public endpoints for data needed before a user is logged in.
- * This class is intentionally self-contained and does not use the DI container
- * to ensure it remains operational even during major refactoring.
  */
 class UnauthenticatedDataController {
+    private ConfigService $configService; // <<<--- ADD PROPERTY
+    private WordPressApiWrapper $wp; // <<<--- ADD PROPERTY
+
+    public function __construct(ConfigService $configService, WordPressApiWrapper $wp) // <<<--- INJECT DEPENDENCIES
+    {
+        $this->configService = $configService;
+        $this->wp = $wp;
+    }
 
     /**
      * Formats a product for a simple, public API response.
      */
-    private function format_product_preview( $product_id ): ?array {
-        if ( ! $product_id || ! function_exists('wc_get_product') ) {
-            return null;
-        }
-        $product = wc_get_product($product_id);
+    private function format_product_preview( int $product_id ): ?array {
+        $product = $this->wp->getProduct($product_id);
         if ( ! $product ) {
             return null;
         }
@@ -44,8 +48,8 @@ class UnauthenticatedDataController {
      * Gets the preview data for the first-scan welcome reward.
      */
     public function get_welcome_reward_preview( WP_REST_Request $request ): WP_REST_Response {
-        $options = get_option('canna_rewards_options', []);
-        $product_id = !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
+        // REFACTOR: Use the injected ConfigService
+        $product_id = $this->configService->getWelcomeRewardProductId();
         
         if ($product_id === 0) {
             $error = new WP_Error('not_configured', 'The welcome reward has not been configured in Brand Settings.', ['status' => 404]);
@@ -66,8 +70,8 @@ class UnauthenticatedDataController {
      * Gets the preview data for the referral sign-up gift.
      */
     public function get_referral_gift_preview( WP_REST_Request $request ): WP_REST_Response {
-        $options = get_option('canna_rewards_options', []);
-        $product_id = !empty($options['referral_signup_gift']) ? (int) $options['referral_signup_gift'] : 0;
+        // REFACTOR: Use the injected ConfigService
+        $product_id = $this->configService->getReferralSignupGiftId();
 
         if ($product_id === 0) {
             $error = new WP_Error('not_configured', 'The referral gift has not been configured in Brand Settings.', ['status' => 404]);

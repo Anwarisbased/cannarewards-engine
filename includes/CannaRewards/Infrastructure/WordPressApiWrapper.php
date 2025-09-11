@@ -20,6 +20,13 @@ final class WordPressApiWrapper {
         $this->db = $wpdb;
     }
 
+    /**
+     * Safely exposes the database prefix to other parts of the application.
+     */
+    public function getDbPrefix(): string {
+        return $this->db->prefix;
+    }
+
     // --- User & Meta Functions ---
 
     public function getUserMeta(int $userId, string $key, bool $single = true) {

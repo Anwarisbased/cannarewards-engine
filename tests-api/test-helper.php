@@ -1,18 +1,27 @@
 <?php
 /**
  * A helper script for Playwright tests to manipulate the database state.
+ *
+ * IMPORTANT: This file is for local development and testing ONLY.
+ * It MUST be excluded from all production deployments via .gitignore.
  */
 
 require_once dirname(__DIR__, 4) . '/wp-load.php';
+
+// A simple check to prevent accidental production execution if .gitignore fails.
+if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
+    header('Content-Type: application/json');
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'This script cannot be run in a production environment.']);
+    exit;
+}
+
 header('Content-Type: application/json');
 $action = $_POST['action'] ?? '';
 global $wpdb;
 
 switch ($action) {
 
-    /**
-     * Directly queries for canna_rank posts to debug timing issues.
-     */
     case 'debug_get_ranks':
         $args = [
             'post_type'      => 'canna_rank',
@@ -20,15 +29,9 @@ switch ($action) {
             'post_status'    => 'publish',
         ];
         $rank_posts = new WP_Query($args);
-        
-        // We return the raw post objects found.
         echo json_encode(['success' => true, 'ranks_found' => $rank_posts->posts]);
         break;
 
-    /**
-     * Clears the rank structure transient cache. We need to do this
-     * to ensure our tests are always running against fresh data.
-     */
     case 'clear_rank_cache':
         delete_transient('canna_rank_structure_dtos');
         echo json_encode(['success' => true, 'message' => 'Rank structure cache has been cleared.']);
@@ -41,37 +44,28 @@ switch ($action) {
             exit;
         }
         $wpdb->delete($wpdb->prefix . 'canna_reward_codes', ['code' => $code]);
-
-        // Use SKU that corresponds to product ID 202
         $wpdb->insert($wpdb->prefix . 'canna_reward_codes', [
             'code' => $code,
-            'sku'  => 'PWT-001',  // Use SKU that maps to product ID 202
+            'sku'  => 'PWT-001',
         ]);
         echo json_encode(['success' => true, 'message' => "Code {$code} has been reset with SKU PWT-001."]);
         break;
 
     case 'prepare_test_product':
-        // Ensure the test product with SKU PWT-001 (which should be product ID 202) has 400 points
         if (!class_exists('WooCommerce')) {
             echo json_encode(['success' => false, 'message' => 'WooCommerce is not active.']);
             exit;
         }
-        
-        // Check if product with SKU PWT-001 exists
         $product_id = wc_get_product_id_by_sku('PWT-001');
         if (!$product_id) {
             echo json_encode(['success' => false, 'message' => 'Product with SKU PWT-001 does not exist.']);
             exit;
         }
-        
-        // Set the points award meta to 400
         update_post_meta($product_id, 'points_award', 400);
-        
         echo json_encode(['success' => true, 'message' => "Test product with SKU PWT-001 (ID: {$product_id}) has been prepared with 400 points award."]);
         break;
 
     case 'simulate_previous_scan':
-        // Simulate that the user has already scanned a product before
         $email = sanitize_email($_POST['email'] ?? '');
         if (empty($email)) {
             echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
@@ -79,8 +73,6 @@ switch ($action) {
         }
         $user = get_user_by('email', $email);
         if ($user) {
-            // Record a fake scan action
-            global $wpdb;
             $wpdb->insert($wpdb->prefix . 'canna_user_action_log', [
                 'user_id' => $user->ID,
                 'action_type' => 'scan',
@@ -100,13 +92,10 @@ switch ($action) {
         }
         $user = get_user_by('email', $email);
         if ($user) {
-            // Remove all of their old orders to ensure a clean state
             if (class_exists('WooCommerce')) {
                 $orders = wc_get_orders(['customer' => $email]);
                 foreach ($orders as $order) { $order->delete(true); }
             }
-            
-            // Allow setting points directly from the test.
             if (isset($_POST['points_balance'])) {
                 update_user_meta($user->ID, '_canna_points_balance', absint($_POST['points_balance']));
             }
@@ -115,7 +104,6 @@ switch ($action) {
             }
             echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
         } else {
-            // User doesn't exist, which is a success for a reset.
             echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
         }
         break;

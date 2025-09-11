@@ -2,6 +2,8 @@
 namespace CannaRewards\Services;
 
 use WP_Post;
+use CannaRewards\Repositories\ActionLogRepository; // <<<--- IMPORT THE REPOSITORY
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -14,9 +16,17 @@ if ( ! defined( 'WPINC' ) ) {
 class ContextBuilderService {
 
     private RankService $rankService;
+    private ActionLogRepository $actionLogRepo; // <<<--- ADD THE REPOSITORY PROPERTY
+    private WordPressApiWrapper $wp; // <<<--- ADD THE WRAPPER PROPERTY
 
-    public function __construct(RankService $rankService) {
+    public function __construct(
+        RankService $rankService,
+        ActionLogRepository $actionLogRepo, // <<<--- INJECT THE REPOSITORY
+        WordPressApiWrapper $wp // <<<--- INJECT THE WRAPPER
+    ) {
         $this->rankService = $rankService;
+        $this->actionLogRepo = $actionLogRepo;
+        $this->wp = $wp;
     }
 
     /**
@@ -34,20 +44,16 @@ class ContextBuilderService {
      * Assembles the complete user_snapshot object according to the Data Taxonomy.
      */
     private function build_user_snapshot( int $user_id ): array {
-        $user = get_userdata( $user_id );
+        $user = $this->wp->getUserById($user_id);
         if ( ! $user ) {
             return [];
         }
 
-        global $wpdb;
-        $log_table = $wpdb->prefix . 'canna_user_action_log';
-        $total_scans = (int) $wpdb->get_var( $wpdb->prepare(
-            "SELECT COUNT(log_id) FROM {$log_table} WHERE user_id = %d AND action_type = 'scan'",
-            $user_id
-        ));
-        
         // --- THIS IS THE FIX ---
-        // We now use the injected RankService instead of the dead global function.
+        // Instead of a direct DB query, we use the clean, abstracted repository method.
+        $total_scans = $this->actionLogRepo->countUserActions($user_id, 'scan');
+        // --- END FIX ---
+        
         $rank_dto = $this->rankService->getUserRank($user_id);
 
         return [
@@ -58,8 +64,9 @@ class ContextBuilderService {
                 'created_at' => $user->user_registered . 'Z',
             ],
             'economy'  => [
-                'points_balance' => get_user_points_balance( $user_id ),
-                'lifetime_points' => get_user_lifetime_points( $user_id ),
+                // Also fixing these to use the wrapper for consistency
+                'points_balance' => (int) $this->wp->getUserMeta($user_id, '_canna_points_balance', true),
+                'lifetime_points' => (int) $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true),
             ],
             'status' => [
                 'rank_key' => $rank_dto->key,
@@ -75,7 +82,7 @@ class ContextBuilderService {
      * Assembles the complete product_snapshot object from a post object.
      */
     private function build_product_snapshot( WP_Post $product_post ): array {
-        $product = wc_get_product( $product_post->ID );
+        $product = $this->wp->getProduct($product_post->ID);
         if ( ! $product ) {
             return [];
         }

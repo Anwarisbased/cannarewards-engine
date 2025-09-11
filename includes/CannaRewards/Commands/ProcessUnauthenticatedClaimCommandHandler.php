@@ -3,18 +3,26 @@ namespace CannaRewards\Commands;
 
 use CannaRewards\Repositories\RewardCodeRepository;
 use CannaRewards\Repositories\ProductRepository;
+use CannaRewards\Services\ConfigService; // <<<--- IMPORT THE SERVICE
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
 use Exception;
 
 final class ProcessUnauthenticatedClaimCommandHandler {
     private $reward_code_repository;
     private $product_repository;
+    private ConfigService $configService; // <<<--- ADD PROPERTY
+    private WordPressApiWrapper $wp; // <<<--- ADD PROPERTY
 
     public function __construct(
         RewardCodeRepository $reward_code_repository,
-        ProductRepository $product_repository
+        ProductRepository $product_repository,
+        ConfigService $configService, // <<<--- INJECT DEPENDENCY
+        WordPressApiWrapper $wp // <<<--- INJECT DEPENDENCY
     ) {
         $this->reward_code_repository = $reward_code_repository;
         $this->product_repository = $product_repository;
+        $this->configService = $configService;
+        $this->wp = $wp;
     }
 
     public function handle(ProcessUnauthenticatedClaimCommand $command): array {
@@ -29,11 +37,12 @@ final class ProcessUnauthenticatedClaimCommandHandler {
         }
 
         $registration_token = bin2hex(random_bytes(32));
-        set_transient('reg_token_' . $registration_token, $command->code, 15 * MINUTE_IN_SECONDS);
+        // REFACTOR: Use the wrapper to set the transient
+        $this->wp->setTransient('reg_token_' . $registration_token, $command->code, 15 * MINUTE_IN_SECONDS);
         
-        $options = get_option('canna_rewards_options', []);
-        $welcome_reward_id = !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
-        $product = $welcome_reward_id ? wc_get_product($welcome_reward_id) : null;
+        // REFACTOR: Use the injected ConfigService
+        $welcome_reward_id = $this->configService->getWelcomeRewardProductId();
+        $product = $welcome_reward_id ? $this->wp->getProduct($welcome_reward_id) : null;
 
         return [
             'status'             => 'registration_required',

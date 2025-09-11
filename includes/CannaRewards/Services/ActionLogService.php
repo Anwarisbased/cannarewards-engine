@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -10,15 +12,20 @@ if ( ! defined( 'WPINC' ) ) {
  * Action Log Service
  */
 class ActionLogService {
+    private WordPressApiWrapper $wp; // <<<--- ADD THE WRAPPER PROPERTY
+
+    public function __construct(WordPressApiWrapper $wp) // <<<--- INJECT THE WRAPPER
+    {
+        $this->wp = $wp;
+    }
+
     /**
      * Records a user action to the log.
      */
     public function record(int $user_id, string $action_type, int $object_id = 0, array $meta_data = []): bool {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'canna_user_action_log';
-
-        $result = $wpdb->insert(
-            $table_name,
+        // REFACTOR: Use the wrapper's dbInsert method
+        $result = $this->wp->dbInsert(
+            'canna_user_action_log',
             [
                 'user_id'     => $user_id,
                 'action_type' => $action_type,
@@ -34,24 +41,19 @@ class ActionLogService {
      * Fetches a user's point transaction history.
      */
     public function get_user_points_history( int $user_id, int $limit = 50 ): array {
-        global $wpdb;
-        $table_name = $wpdb->prefix . 'canna_user_action_log';
+        $table_name = 'canna_user_action_log'; // Keep this for clarity
 
-        // --- START FIX ---
-        // Changed the query to filter by specific action types instead of a JSON key.
-        // This is more reliable and explicit.
-        $results = $wpdb->get_results(
-            $wpdb->prepare(
-                "SELECT meta_data, created_at FROM {$table_name} 
-                 WHERE user_id = %d 
-                 AND action_type IN ('points_granted', 'redeem')
-                 ORDER BY log_id DESC 
-                 LIMIT %d",
-                $user_id,
-                $limit
-            )
+        // REFACTOR: Use the wrapper's prepare and get_results methods
+        $query = $this->wp->dbPrepare(
+            "SELECT meta_data, created_at FROM {$this->wp->db->prefix}{$table_name} 
+             WHERE user_id = %d 
+             AND action_type IN ('points_granted', 'redeem')
+             ORDER BY log_id DESC 
+             LIMIT %d",
+            $user_id,
+            $limit
         );
-        // --- END FIX ---
+        $results = $this->wp->dbGetResults($query);
 
         $history = [];
         if ( empty( $results ) ) {

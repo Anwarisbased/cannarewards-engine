@@ -21,8 +21,9 @@ class ActionLogRepository {
 
     public function countUserActions(int $user_id, string $action_type): int {
         $table_name = 'canna_user_action_log';
+        $full_table_name = $this->wp->getDbPrefix() . $table_name;
         $query = $this->wp->dbPrepare(
-            "SELECT COUNT(log_id) FROM {$this->wp->db->prefix}{$table_name} WHERE user_id = %d AND action_type = %s",
+            "SELECT COUNT(log_id) FROM {$full_table_name} WHERE user_id = %d AND action_type = %s",
             $user_id,
             $action_type
         );

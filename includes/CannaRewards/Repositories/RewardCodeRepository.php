@@ -27,8 +27,9 @@ class RewardCodeRepository {
      * @return object|null The code data object or null if not found.
      */
     public function findValidCode(string $code_to_claim): ?object {
+        $full_table_name = $this->wp->getDbPrefix() . $this->table_name;
         $query = $this->wp->dbPrepare(
-            "SELECT id, sku FROM {$this->wp->db->prefix}{$this->table_name} WHERE code = %s AND is_used = 0",
+            "SELECT id, sku FROM {$full_table_name} WHERE code = %s AND is_used = 0",
             $code_to_claim
         );
         return $this->wp->dbGetRow($query);

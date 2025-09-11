@@ -26,8 +26,9 @@ class AchievementRepository {
         }
 
         $table_name = 'canna_achievements';
+        $full_table_name = $this->wp->getDbPrefix() . $table_name;
         $query = $this->wp->dbPrepare(
-            "SELECT * FROM {$this->wp->db->prefix}{$table_name} WHERE is_active = 1 AND trigger_event = %s",
+            "SELECT * FROM {$full_table_name} WHERE is_active = 1 AND trigger_event = %s",
             $event_name
         );
         $results = $this->wp->dbGetResults($query);
@@ -38,8 +39,9 @@ class AchievementRepository {
 
     public function getUnlockedKeysForUser(int $user_id): array {
         $table_name = 'canna_user_achievements';
+        $full_table_name = $this->wp->getDbPrefix() . $table_name;
         $query = $this->wp->dbPrepare(
-            "SELECT achievement_key FROM {$this->wp->db->prefix}{$table_name} WHERE user_id = %d",
+            "SELECT achievement_key FROM {$full_table_name} WHERE user_id = %d",
             $user_id
         );
         return $this->wp->dbGetCol($query);
