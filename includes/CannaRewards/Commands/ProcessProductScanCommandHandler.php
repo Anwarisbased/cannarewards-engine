@@ -38,7 +38,11 @@ final class ProcessProductScanCommandHandler {
     }
 
     public function handle(ProcessProductScanCommand $command): array {
+
+
         $code_data = $this->rewardCodeRepo->findValidCode($command->code);
+
+
         if (!$code_data) { throw new Exception('This code is invalid or has already been used.'); }
         $product_id = $this->productRepo->findIdBySku($code_data->sku);
         if (!$product_id) { throw new Exception('The product associated with this code could not be found.'); }

@@ -22,7 +22,8 @@ final class GrantPointsCommandHandler {
     }
 
     public function handle(GrantPointsCommand $command): array {
-        $user_rank_dto    = $this->rankService->getUserRank($command->user_id);
+
+        
         $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
         $final_multiplier = max( $rank_multiplier, $command->temp_multiplier );
         $points_to_grant  = floor( $command->base_points * $final_multiplier );
