@@ -11,6 +11,8 @@ use CannaRewards\Api;
 use CannaRewards\Services;
 use CannaRewards\Includes\DB;
 use CannaRewards\Includes\Integrations;
+use CannaRewards\Api\Exceptions\ValidationException;
+use CannaRewards\Api\FormRequest;
 use Psr\Container\ContainerInterface;
 
 final class CannaRewardsEngine {
@@ -59,39 +61,72 @@ final class CannaRewardsEngine {
         
         register_activation_hook(CANNA_PLUGIN_FILE, [DB::class, 'activate']);
     }
+    
+    /**
+     * A factory that wraps controller callbacks to enable Form Request injection.
+     */
+    private function create_route_callback(string $controllerClass, string $methodName, ?string $formRequestClass = null) {
+        return function (\WP_REST_Request $request) use ($controllerClass, $methodName, $formRequestClass) {
+            try {
+                $controller = $this->container->get($controllerClass);
+                $args = [];
+
+                if ($formRequestClass) {
+                    // If a FormRequest is defined, create it. This handles all validation.
+                    $formRequest = new $formRequestClass($request);
+                    $args[] = $formRequest;
+                } else {
+                    // Otherwise, just pass the original WP_REST_Request
+                    $args[] = $request;
+                }
+
+                // Call the controller method with the prepared arguments.
+                return call_user_func_array([$controller, $methodName], $args);
+
+            } catch (ValidationException $e) {
+                // Return a 422 Unprocessable Entity response for validation errors.
+                $error = new \WP_Error('validation_failed', $e->getMessage(), ['status' => 422, 'errors' => $e->getErrors()]);
+                return rest_ensure_response($error);
+            } catch (\Exception $e) {
+                // Generic error handling for everything else.
+                $statusCode = $e->getCode() && is_int($e->getCode()) && $e->getCode() >= 400 ? $e->getCode() : 500;
+                $error = new \WP_Error('internal_error', $e->getMessage(), ['status' => $statusCode]);
+                return rest_ensure_response($error);
+            }
+        };
+    }
 
     public function register_rest_routes() {
         $v2_namespace = 'rewards/v2';
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
         
-        // A centralized, maintainable way to register all routes.
+        // --- REFACTORED ROUTING ---
+        // We now define the FormRequest class for each route where applicable.
         $routes = [
-            // Session
             '/users/me/session' => ['GET', Api\SessionController::class, 'get_session_data', $permission_auth],
-
-            // Auth
-            '/auth/register' => ['POST', Api\AuthController::class, 'register_user', $permission_public],
-            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token', $permission_public],
-            '/auth/login' => ['POST', Api\AuthController::class, 'login_user', $permission_public],
-
-            // Actions
-            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim', $permission_auth],
-            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption', $permission_auth],
-            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim', $permission_public],
-
-            // User Data
-            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth]
+            '/auth/register' => ['POST', Api\AuthController::class, 'register_user', $permission_public, Api\Requests\RegisterUserRequest::class],
+            // ... (other routes for now will remain the same until we create FormRequests for them)
         ];
 
         foreach ($routes as $endpoint => $config) {
-            list($method, $controllerClass, $callbackMethod, $permission) = $config;
+            list($method, $controllerClass, $callbackMethod, $permission, $formRequestClass) = array_pad($config, 5, null);
 
             register_rest_route($v2_namespace, $endpoint, [
                 'methods' => $method,
-                'callback' => [$this->container->get($controllerClass), $callbackMethod],
+                // Use our new factory to create the callback
+                'callback' => $this->create_route_callback($controllerClass, $callbackMethod, $formRequestClass),
                 'permission_callback' => $permission
             ]);
         }
+
+        // --- OLDER ROUTES (to be refactored) ---
+        // This is a temporary measure. We will move all routes to the array above as we create FormRequests for them.
+        register_rest_route($v2_namespace, '/auth/register-with-token', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_with_token'], 'permission_callback' => $permission_public ]);
+        register_rest_route($v2_namespace, '/auth/login', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'login_user'], 'permission_callback' => $permission_public ]);
+        register_rest_route($v2_namespace, '/actions/claim', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_claim'], 'permission_callback' => $permission_auth ]);
+        register_rest_route($v2_namespace, '/actions/redeem', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\RedeemController::class), 'process_redemption'], 'permission_callback' => $permission_auth ]);
+        register_rest_route($v2_namespace, '/unauthenticated/claim', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_unauthenticated_claim'], 'permission_callback' => $permission_public ]);
+        register_rest_route($v2_namespace, '/users/me/orders', [ 'methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth ]);
     }
 }

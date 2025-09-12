@@ -5,7 +5,8 @@
     "license": "GPL-2.0-or-later",
     "require": {
         "php-di/php-di": "^7.0",
-        "justinrainbow/json-schema": "^5.2"
+        "justinrainbow/json-schema": "^5.2",
+        "vlucas/valitron": "^1.4"
     },
     "require-dev": {
         "wp-coding-standards/wpcs": "^3.0",

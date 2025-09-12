@@ -6,6 +6,7 @@ use CannaRewards\Services\UserService;
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Api\Requests\RegisterUserRequest;
 use Exception;
 
 // Exit if accessed directly.
@@ -20,28 +21,12 @@ class AuthController {
         $this->user_service = $user_service;
     }
 
-    public function register_user( WP_REST_Request $request ) {
-        try {
-            $params = $request->get_json_params();
-
-            $email_vo = new EmailAddress($params['email'] ?? '');
-
-            $command = new CreateUserCommand(
-                $email_vo,
-                $params['password'] ?? '',
-                sanitize_text_field($params['firstName'] ?? ''),
-                sanitize_text_field($params['lastName'] ?? ''),
-                sanitize_text_field($params['phone'] ?? ''),
-                (bool) ($params['agreedToTerms'] ?? false),
-                (bool) ($params['agreedToMarketing'] ?? false),
-                sanitize_text_field($params['referralCode'] ?? null)
-            );
-
-            $result = $this->user_service->handle($command);
-            return ApiResponse::success($result, 201);
-        } catch ( Exception $e ) {
-            return ApiResponse::error($e->getMessage(), 'registration_failed', $e->getCode() ?: 400);
-        }
+    public function register_user( RegisterUserRequest $request ) {
+        // The controller is now incredibly simple.
+        // All validation, sanitization, and data transformation happened before this method was even called.
+        $command = $request->to_command();
+        $result = $this->user_service->handle($command);
+        return ApiResponse::success($result, 201);
     }
     
     public function register_with_token( WP_REST_Request $request ) {
@@ -106,7 +91,9 @@ class AuthController {
         $options = get_option('canna_rewards_options');
         $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
         $reset_link = "$base_url/reset-password?token=$token&email=" . rawurlencode($email);
-        wp_mail($email, 'Your Password Reset Request', "Click to reset: $reset_link \n\nThis link expires in 1 hour.");
+        wp_mail($email, 'Your Password Reset Request', "Click to reset: $reset_link 
+
+This link expires in 1 hour.");
         return $success_response;
     }
 
