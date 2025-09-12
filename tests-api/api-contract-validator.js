@@ -4,9 +4,14 @@ import addFormats from 'ajv-formats';
 import yaml from 'js-yaml';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load and parse the OpenAPI spec ONCE at startup.
-const specPath = path.resolve(__dirname, '../docs/openapi spec/notayaml.md');
+const specPath = path.resolve(__dirname, '../docs/openapi spec/openapi.yaml');
 const spec = yaml.load(fs.readFileSync(specPath, 'utf8'));
 
 // The validator instance. { strict: false } tells it to ignore non-standard
@@ -46,7 +51,7 @@ function resolveRefs(schema, openApiSpec) {
  * @param {string} endpointPath - The OpenAPI path template (e.g., '/actions/redeem').
  * @param {string} method - The HTTP method in lowercase (e.g., 'post').
  */
-export async function validateApiContract(response, endpointPath, method) {
+async function validateApiContract(response, endpointPath, method) {
     const responseBody = await response.json();
     const statusCode = response.status().toString();
 
@@ -80,8 +85,15 @@ export async function validateApiContract(response, endpointPath, method) {
 
     if (!valid) {
         const errorDetails = JSON.stringify(validate.errors, null, 2);
-        throw new Error(`[API Contract] Validation FAILED for "${method} ${endpointPath}" [${statusCode}]:\n${errorDetails}\nReceived Body:\n${JSON.stringify(responseBody, null, 2)}`);
+        throw new Error(`[API Contract] Validation FAILED for "${method} ${endpointPath}" [${statusCode}]:
+${errorDetails}
+Received Body:
+${JSON.stringify(responseBody, null, 2)}`);
     }
 
     return true; // Assertion passed
 }
+
+// Export both named and default for compatibility
+export { validateApiContract };
+export default validateApiContract;

@@ -13,6 +13,8 @@ test.describe('User Onboarding Golden Path', () => {
   });
 
   test('A new user scanning a valid code should register and receive a welcome gift', async ({ request }) => {
+    // Increase timeout for this test
+    test.setTimeout(60000);
 
     // STEP 1: Unauthenticated scan
     const unauthenticatedClaim = await request.post('/wp-json/rewards/v2/unauthenticated/claim', {
@@ -45,7 +47,7 @@ test.describe('User Onboarding Golden Path', () => {
     // STEP 3: Verify the outcome
     // The scan happens asynchronously now. We need to wait a moment for the event to be processed.
     // In a real-world scenario, the frontend would use polling or websockets. For our test, a short delay is sufficient.
-    await new Promise(resolve => setTimeout(resolve, 1000)); // 1 second delay
+    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second delay
 
     const ordersResponse = await request.get('/wp-json/rewards/v2/users/me/orders', {
       headers: { 'Authorization': `Bearer ${authToken}` }

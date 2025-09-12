@@ -3,12 +3,14 @@ namespace CannaRewards\Api;
 
 use CannaRewards\Services\UserService;
 use WP_REST_Request;
+use OpenApi\Attributes as OA;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
 
+#[OA\Info(title: "CannaRewards API", version: "2.1.0")]
 /**
  * Handles the user session endpoint.
  */
@@ -19,6 +21,32 @@ class SessionController {
         $this->userService = $userService;
     }
 
+    #[OA\Get(
+        path: "/users/me/session",
+        tags: ["App & Session"],
+        summary: "Get Session Data",
+        description: "A lightweight 'heartbeat' endpoint. Verifies the user's token and returns the minimal data needed to render the authenticated app shell.",
+        security: [["bearerAuth" => []]],
+        responses: [
+            new OA\Response(
+                response: 200,
+                description: "OK",
+                content: new OA\JsonContent(
+                    properties: [
+                        new OA\Property(property: 'success', type: 'boolean', example: true),
+                        new OA\Property(property: 'data', ref: "#/components/schemas/SessionUser")
+                    ]
+                )
+            ),
+            new OA\Response(response: 401, description: "Unauthorized")
+        ]
+    )]
+    #[OA\SecurityScheme(
+        securityScheme: "bearerAuth",
+        type: "http",
+        bearerFormat: "JWT",
+        scheme: "bearer"
+    )]
     /**
      * Callback for GET /v2/users/me/session.
      * Fetches and returns the lightweight session data for the currently authenticated user.

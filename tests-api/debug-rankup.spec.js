@@ -6,13 +6,12 @@ test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
   let testUserEmail;
 
   test.beforeAll(async ({ request }) => {
-    console.log('\n--- FORENSIC AUDIT: SETUP ---');
-
+    // Clear rank cache
     await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
       form: { action: 'clear_rank_cache' }
     });
-    console.log('- Step 0.0: Cleared rank structure cache.');
 
+    // Create test user
     const uniqueEmail = `rankup_audit_${Date.now()}@example.com`;
     await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
       form: { action: 'reset_user_by_email', email: uniqueEmail }
@@ -24,119 +23,70 @@ test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
         lastName: 'Audit', agreedToTerms: true,
       }
     });
-    expect(registerResponse.ok(), 'CRITICAL FAILURE: Could not register the test user.').toBeTruthy();
-    
-    console.log(`- Step 0.1: Registered new user. Email: ${uniqueEmail}`);
+    expect(registerResponse.ok()).toBeTruthy();
 
     const loginResponse = await request.post('/wp-json/jwt-auth/v1/token', {
       data: { username: uniqueEmail, password: 'test-password' }
     });
-    expect(loginResponse.ok(), 'CRITICAL FAILURE: Could not log in the test user.').toBeTruthy();
+    expect(loginResponse.ok()).toBeTruthy();
     const loginData = await loginResponse.json();
     authToken = loginData.token;
     testUserEmail = uniqueEmail;
-    console.log('- Step 0.2: Successfully logged in and acquired auth token.');
-    console.log('--- SETUP COMPLETE ---');
   });
 
   test('should correctly transition from bronze to silver after a product scan', async ({ request }) => {
-    console.log('\n--- TEST EXECUTION ---');
+    // Arrange: Set user to 4800 lifetime points (just below silver threshold)
+    const resetResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: {
+        action: 'reset_user_by_email', email: testUserEmail,
+        points_balance: 100, lifetime_points: 4800
+      }
+    });
+    expect(resetResponse.ok()).toBeTruthy();
 
-    await test.step('STEP 1: ARRANGE - Set user to 4800 lifetime points', async () => {
-        const resetResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
-            form: {
-                action: 'reset_user_by_email', email: testUserEmail,
-                points_balance: 100, lifetime_points: 4800
-            }
-        });
-        expect(resetResponse.ok(), 'STEP 1 FAILED: The test helper script failed to reset the user.').toBeTruthy();
-        console.log('  - OK: User lifetime points set to 4800.');
+    // Verify starting rank is bronze
+    const sessionResponse = await request.get('/wp-json/rewards/v2/users/me/session', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
     });
+    const sessionData = await sessionResponse.json();
+    expect(sessionData.data.rank.key).toBe('bronze');
 
-    await test.step("STEP 2: VERIFY - API must report user's starting rank as 'bronze'", async () => {
-        const sessionResponse = await request.get('/wp-json/rewards/v2/users/me/session', {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-        const sessionData = await sessionResponse.json();
-        expect(sessionData.data.rank.key, "STEP 2 FAILED: User should have started as 'bronze' but did not.").toBe('bronze');
-        console.log(`  - OK: Initial rank is correctly reported as '${sessionData.data.rank.key}'.`);
+    // Prepare test product and reset QR code
+    const prepareResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'prepare_test_product' }
     });
+    expect(prepareResponse.ok()).toBeTruthy();
 
-    await test.step("STEP 3: PREPARE - Prepare test product, simulate previous scan, and reset QR code", async () => {
-        // First prepare the test product to ensure it has correct points
-        const prepareResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
-          form: { action: 'prepare_test_product' }
-        });
-        console.log(`  - Prepare product response status: ${prepareResponse.status()}`);
-        if (!prepareResponse.ok()) {
-            const errorText = await prepareResponse.text();
-            console.log(`  - Prepare product error text: ${errorText}`);
-        }
-        expect(prepareResponse.ok(), 'STEP 3 FAILED: Could not prepare test product.').toBeTruthy();
-        const prepareData = await prepareResponse.json();
-        console.log(`  - Prepare product message: ${prepareData.message}`);
-        
-        // Simulate a previous scan so this won't be treated as first scan
-        const simulateResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
-          form: { action: 'simulate_previous_scan', email: testUserEmail }
-        });
-        console.log(`  - Simulate previous scan response status: ${simulateResponse.status()}`);
-        if (!simulateResponse.ok()) {
-            const errorText = await simulateResponse.text();
-            console.log(`  - Simulate previous scan error text: ${errorText}`);
-        }
-        expect(simulateResponse.ok(), 'STEP 3 FAILED: Could not simulate previous scan.').toBeTruthy();
-        console.log(`  - OK: Previous scan simulated.`);
-        
-        // Then reset the QR code to use SKU PWT-001
-        const testCode = 'PWT-RANKUP-AUDIT';
-        const qrResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
-          form: { action: 'reset_qr_code', code: testCode }
-        });
-        console.log(`  - Reset QR response status: ${qrResponse.status()}`);
-        if (!qrResponse.ok()) {
-            const errorText = await qrResponse.text();
-            console.log(`  - Reset QR error text: ${errorText}`);
-        }
-        expect(qrResponse.ok(), 'STEP 3 FAILED: Could not reset QR code.').toBeTruthy();
-        console.log(`  - OK: QR code is ready to be scanned with SKU PWT-001.`);
+    // Simulate a previous scan so this won't be treated as first scan
+    const simulateResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'simulate_previous_scan', email: testUserEmail }
     });
-    
-    await test.step("STEP 4: ACT - Scan product to award 400 points", async () => {
-        const testCode = 'PWT-RANKUP-AUDIT';
-        const claimResponse = await request.post('/wp-json/rewards/v2/actions/claim', {
-          headers: { 'Authorization': `Bearer ${authToken}` },
-          data: { code: testCode }
-        });
-        
-        // Log the response details for debugging
-        console.log(`  - Claim response status: ${claimResponse.status()}`);
-        if (!claimResponse.ok()) {
-            const errorText = await claimResponse.text();
-            console.log(`  - Claim error text: ${errorText}`);
-        }
-        
-        expect(claimResponse.ok(), `STEP 4 FAILED: The /actions/claim endpoint returned an error.`).toBeTruthy();
-        const claimData = await claimResponse.json();
-        console.log(`  - OK: Scan successful. API message: ${claimData.data.message}`);
-        
-        // In the new architecture, points are awarded asynchronously, so we just check for success
-        expect(claimData.data.success, "STEP 4 FAILED: Scan was not successful.").toBe(true);
+    expect(simulateResponse.ok()).toBeTruthy();
+
+    // Reset the QR code to use SKU PWT-001
+    const testCode = 'PWT-RANKUP-AUDIT';
+    const qrResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'reset_qr_code', code: testCode }
     });
-    
-    await test.step("STEP 5: ASSERT - API must now report user's rank as 'silver'", async () => {
-        // Wait a moment for the async points processing to complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        const finalSession = await request.get('/wp-json/rewards/v2/users/me/session', {
-            headers: { 'Authorization': `Bearer ${authToken}` }
-        });
-        const finalSessionData = await finalSession.json();
-        console.log(`  - INFO: Final rank reported by API: '${finalSessionData.data.rank.key}'`);
-        expect(finalSessionData.data.rank.key, "STEP 5 FAILED: The final rank was not 'silver'.").toBe('silver');
-        console.log('  - OK: Final rank is correct.');
+    expect(qrResponse.ok()).toBeTruthy();
+
+    // Act: Scan product to award 400 points (should push user to 5200 lifetime points)
+    const claimResponse = await request.post('/wp-json/rewards/v2/actions/claim', {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+      data: { code: testCode }
     });
-    
-    console.log('--- ✅ ✅ ✅ SUCCESS: Rank-up lifecycle verified. ---');
+    expect(claimResponse.ok()).toBeTruthy();
+    const claimData = await claimResponse.json();
+    expect(claimData.data.success).toBe(true);
+
+    // Assert: API must now report user's rank as 'silver'
+    // Wait a moment for the async points processing to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    const finalSession = await request.get('/wp-json/rewards/v2/users/me/session', {
+      headers: { 'Authorization': `Bearer ${authToken}` }
+    });
+    const finalSessionData = await finalSession.json();
+    expect(finalSessionData.data.rank.key).toBe('silver');
   });
 });
