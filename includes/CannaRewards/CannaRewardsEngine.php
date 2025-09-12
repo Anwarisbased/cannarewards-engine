@@ -60,44 +60,28 @@ final class CannaRewardsEngine {
         $v2_namespace = 'rewards/v2';
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
-
-        // --- Session Endpoint Fix ---
-        register_rest_route($v2_namespace, '/users/me/session', [
-            'methods' => 'GET', 
-            'callback' => function() { 
-                $user_service = $this->container->get(Services\UserService::class); 
-                $session_dto = $user_service->get_user_session_data(get_current_user_id());
-                // The (array) cast is critical. It recursively converts the main DTO
-                // and the nested RankDTO into a plain array for the JSON response.
-                return Api\ApiResponse::success((array) $session_dto); 
-            }, 
-            'permission_callback' => $permission_auth
-        ]);
-        // --- End Fix ---
-
-        // A more maintainable way to register routes
+        
+        // A centralized, maintainable way to register all routes.
         $routes = [
+            // Session
+            '/users/me/session' => ['GET', Api\SessionController::class, 'get_session_data', $permission_auth],
+
             // Auth
-            '/auth/register' => ['POST', Api\AuthController::class, 'register_user'],
-            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token'],
-            '/auth/login' => ['POST', Api\AuthController::class, 'login_user'],
+            '/auth/register' => ['POST', Api\AuthController::class, 'register_user', $permission_public],
+            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token', $permission_public],
+            '/auth/login' => ['POST', Api\AuthController::class, 'login_user', $permission_public],
 
             // Actions
-            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim'],
-            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption'],
-            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim'],
+            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim', $permission_auth],
+            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption', $permission_auth],
+            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim', $permission_public],
 
             // User Data
-            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders']
-            // ... Add all other routes here in the same format
+            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth]
         ];
 
         foreach ($routes as $endpoint => $config) {
-            list($method, $controllerClass, $callbackMethod) = $config;
-            // Determine permission based on endpoint
-            $permission = (strpos($endpoint, 'unauthenticated') === false && strpos($endpoint, 'auth') === false) 
-                ? $permission_auth 
-                : $permission_public;
+            list($method, $controllerClass, $callbackMethod, $permission) = $config;
 
             register_rest_route($v2_namespace, $endpoint, [
                 'methods' => $method,

@@ -56,6 +56,7 @@ docs/Contributing.md
 docs/Data_taxonomy/data_taxonomy.md
 docs/Data_taxonomy/Seeddata.md
 docs/openapi spec/notayaml.md
+docs/openapi spec/openapi.yaml
 docs/Project genesis/project_genesis.md
 includes/canna-core-functions.php
 includes/CannaRewards/Admin/AchievementMetabox.php
@@ -77,6 +78,7 @@ includes/CannaRewards/Api/ProfileController.php
 includes/CannaRewards/Api/RedeemController.php
 includes/CannaRewards/Api/ReferralController.php
 includes/CannaRewards/Api/RulesController.php
+includes/CannaRewards/Api/SessionController.php
 includes/CannaRewards/Api/UnauthenticatedDataController.php
 includes/CannaRewards/CannaRewardsEngine.php
 includes/CannaRewards/Commands/CreateUserCommand.php
@@ -138,22 +140,148 @@ README.MD
 schemas/entities/user_snapshot.v1.json
 schemas/events/product_scanned.v1.json
 tests-api/api-contract-validator.js
+tests-api/component-harness.php
 tests-api/debug-product.php
 tests-api/debug-rank-script.php
 tests-api/debug-rank-simple.php
 tests-api/debug-ranks.php
 tests-api/debug-rankup.spec.js
+tests-api/economy-component.spec.js
 tests-api/economy.spec.js
 tests-api/healthcheck.spec.js
 tests-api/onboarding.spec.js
 tests-api/rank-audit.spec.js
+tests-api/session.spec.js
 tests-api/test-helper.php
+tests-api/user-component.spec.js
+tests-api/user-service.spec.js
 tests-examples/demo-todo-app.spec.js
 tests/example.spec.js
 </directory_structure>
 
 <files>
 This section contains the contents of the repository's files.
+
+<file path="includes/CannaRewards/Api/SessionController.php">
+<?php
+namespace CannaRewards\Api;
+
+use CannaRewards\Services\UserService;
+use WP_REST_Request;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * Handles the user session endpoint.
+ */
+class SessionController {
+    private UserService $userService;
+
+    public function __construct(UserService $userService) {
+        $this->userService = $userService;
+    }
+
+    /**
+     * Callback for GET /v2/users/me/session.
+     * Fetches and returns the lightweight session data for the currently authenticated user.
+     *
+     * @param WP_REST_Request $request The incoming REST request.
+     * @return \WP_REST_Response The formatted API response.
+     */
+    public function get_session_data(WP_REST_Request $request): \WP_REST_Response {
+        $user_id = get_current_user_id();
+        
+        $session_dto = $this->userService->get_user_session_data($user_id);
+
+        // The DTO and any nested DTOs (like RankDTO) are recursively converted to an array/object structure
+        // to ensure they are properly serialized into JSON for the response.
+        $response_data = json_decode(json_encode($session_dto), true);
+        
+        // Ensure feature_flags is an object, not an array
+        if (isset($response_data['feature_flags']) && is_array($response_data['feature_flags'])) {
+            $response_data['feature_flags'] = (object) $response_data['feature_flags'];
+        }
+
+        return ApiResponse::success($response_data);
+    }
+}
+</file>
+
+<file path="tests-api/session.spec.js">
+import { test, expect } from '@playwright/test';
+import { validateApiContract } from './api-contract-validator.js';
+
+test.describe('API Endpoint: /users/me/session', () => {
+  const testUser = {
+    email: `session_api_test_${Date.now()}@example.com`,
+    id: 0,
+    password: 'test-password-123',
+    authToken: ''
+  };
+
+  // Before all tests, create and log in a dedicated user.
+  test.beforeAll(async ({ request }) => {
+    // Register the new user
+    const registerResponse = await request.post('/wp-json/rewards/v2/auth/register', {
+        data: {
+          email: testUser.email,
+          password: testUser.password,
+          firstName: 'SessionAPI',
+          agreedToTerms: true
+        }
+    });
+    expect(registerResponse.ok()).toBeTruthy();
+    const body = await registerResponse.json();
+    testUser.id = body.data.userId;
+
+    // Log in to get the auth token
+    const loginResponse = await request.post('/wp-json/jwt-auth/v1/token', {
+      data: { username: testUser.email, password: testUser.password }
+    });
+    expect(loginResponse.ok()).toBeTruthy();
+    const loginData = await loginResponse.json();
+    testUser.authToken = loginData.token;
+  });
+
+  // After all tests, clean up the user.
+  test.afterAll(async ({ request }) => {
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUser.email }
+    });
+  });
+
+  test('should return a valid session object and match the API contract', async ({ request }) => {
+    // ARRANGE: Set user to a known state
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: {
+        action: 'reset_user_by_email',
+        email: testUser.email,
+        points_balance: 1234,
+        lifetime_points: 5678
+      }
+    });
+
+    // ACT: Call the actual REST API endpoint
+    const sessionResponse = await request.get('/wp-json/rewards/v2/users/me/session', {
+      headers: {
+        'Authorization': `Bearer ${testUser.authToken}`
+      }
+    });
+
+    // ASSERT: The response is valid and matches the OpenAPI spec
+    expect(sessionResponse.ok()).toBeTruthy();
+    await expect(async () => await validateApiContract(sessionResponse, '/users/me/session', 'get')).toPass();
+
+    const responseBody = await sessionResponse.json();
+    expect(responseBody.data.id).toBe(testUser.id);
+    expect(responseBody.data.points_balance).toBe(1234);
+    expect(responseBody.data.rank.key).toBe('silver'); // 5678 points should be silver
+  });
+});
+</file>
 
 <file path=".github/workflows/playwright.yml">
 name: Playwright Tests
@@ -628,6 +756,637 @@ INSERT INTO `wp_postmeta` (`post_id`, `meta_key`, `meta_value`) VALUES
 -- through the WordPress admin UI for a more realistic testing environment.
 
 -- END OF SEED DATA
+</file>
+
+<file path="docs/openapi spec/openapi.yaml">
+openapi: 3.0.3
+info:
+  title: CannaRewards API
+  description: |-
+    The official API contract for the CannaRewards v2 platform. 
+    This API is designed with a service-oriented, event-driven backend to power a headless PWA. 
+    It provides a comprehensive suite of endpoints for managing users, economy, gamification, and content.
+  version: 2.0.0
+  contact:
+    name: API Support
+    url: https://yourwebsite.com/support
+    email: dev@yourdomain.com
+
+servers:
+  - url: https://your-backend-domain.com/wp-json/rewards/v2
+    description: Production Server
+  - url: http://cannarewards-api.local/wp-json/rewards/v2
+    description: Local Development Server
+
+tags:
+  - name: App & Session
+    description: Endpoints for core application configuration and lightweight session management.
+  - name: User Profile & Data
+    description: Endpoints for fetching and updating detailed user profile information.
+  - name: Economy
+    description: Endpoints related to the points economy, rewards catalog, and wishlisting.
+  - name: Actions
+    description: Primary endpoints that trigger core user actions and business events.
+  - name: Authentication
+    description: Endpoints for user registration, login, and password management.
+  - name: Pages
+    description: Endpoints for retrieving general WordPress content.
+
+#--------------------------------
+# Reusable Components
+#--------------------------------
+components:
+  schemas:
+    # --- Model Schemas ---
+    Rank:
+      type: object
+      description: "Represents a single rank or tier in the loyalty program."
+      properties:
+        key: 
+          type: string
+          example: "gold"
+          description: "The unique, machine-readable key for the rank."
+        name: 
+          type: string
+          example: "Gold"
+          description: "The human-readable name of the rank."
+        points_required: 
+          type: integer
+          format: int64
+          example: 5000
+          description: "The lifetime points required to achieve this rank."
+        point_multiplier: 
+          type: number
+          format: float
+          example: 1.5
+          description: "The point earning multiplier for this rank."
+        benefits: 
+          type: array
+          items: 
+            type: string
+          example: ["Early access to new rewards", "Exclusive merch"]
+          description: "A list of perks for this rank."
+
+    Achievement:
+      type: object
+      description: "Represents the definition of a single achievement."
+      properties:
+        title: 
+          type: string
+          example: "Sativa Specialist"
+        description: 
+          type: string
+          example: "Scan 5 different Sativa products."
+        rarity: 
+          type: string
+          enum: [common, uncommon, rare, epic, legendary]
+          example: "rare"
+        icon_url: 
+          type: string
+          format: uri
+          nullable: true
+          description: "URL for the achievement's icon image."
+    
+    RewardProduct:
+      type: object
+      description: "A simplified representation of a WooCommerce product that can be redeemed with points."
+      properties:
+        id: 
+          type: integer
+          example: 82
+        name: 
+          type: string
+          example: "Limited Edition Hoodie"
+        points_cost: 
+          type: integer
+          example: 4500
+        image_url: 
+          type: string
+          format: uri
+          nullable: true
+        tags: 
+          type: array
+          items: 
+            type: string
+          example: ["limited", "new"]
+
+    Order:
+      type: object
+      description: "Represents a single redeemed order."
+      properties:
+        orderId:
+          type: integer
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+        items:
+          type: string
+        imageUrl:
+          type: string
+          format: uri
+
+    SessionUser:
+      type: object
+      description: "A lightweight object representing the core data for an authenticated user's session."
+      properties:
+        id: 
+          type: integer
+          example: 123
+        firstName: 
+          type: string
+          example: "Jane"
+          nullable: true
+        email: 
+          type: string
+          format: email
+        points_balance: 
+          type: integer
+          example: 1250
+        rank:
+          type: object
+          properties:
+            key: { type: string, example: "silver" }
+            name: { type: string, example: "Silver" }
+        onboarding_quest_step: 
+          type: integer
+          example: 2
+        feature_flags: 
+          type: object
+          description: "Flags for A/B testing frontend features."
+          example: {"dashboard_version": "B"}
+
+    ShippingAddress:
+      type: object
+      description: "A standard shipping address object."
+      required: [first_name, last_name, address_1, city, state, postcode]
+      properties:
+        first_name: { type: string, example: "Jane" }
+        last_name: { type: string, example: "Doe" }
+        address_1: { type: string, example: "123 Main St" }
+        city: { type: string, example: "Anytown" }
+        state: { type: string, example: "CA" }
+        postcode: { type: string, example: "90210" }
+
+    CustomFieldDefinition:
+      type: object
+      description: "The schema for a single dynamically defined custom field."
+      properties:
+        key: { type: string, example: "favorite_strain_type", description: "The meta key for the field." }
+        label: { type: string, example: "Favorite Strain Type", description: "The human-readable label." }
+        type: { type: string, enum: [text, date, dropdown], description: "The type of form input to render." }
+        options: { type: array, items: { type: string }, example: ["Sativa", "Indica", "Hybrid"], description: "Options for dropdown type." }
+        display: { type: array, items: { type: string }, example: ["edit_profile", "registration"], description: "Where in the UI this field should appear." }
+
+    # --- Request Body Schemas ---
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email, example: "jane.doe@example.com" }
+        password: { type: string, format: password, example: "Str0ngP@ssw0rd!" }
+    
+    RegisterRequest:
+      type: object
+      required: [email, password, firstName, agreedToTerms]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, format: password, minLength: 8 }
+        firstName: { type: string }
+        lastName: { type: string }
+        phone: { type: string, description: "Optional phone number." }
+        agreedToTerms: { type: boolean, description: "Must be true to register." }
+        agreedToMarketing: { type: boolean }
+        referralCode: { type: string, description: "Optional referral code from another user." }
+        claimCode: { type: string, description: "Optional QR code from a product scan during unauthenticated registration." }
+
+    # --- Generic Response Schemas ---
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+
+    # --- Error Schemas ---
+    Error:
+      type: object
+      required: [message]
+      properties:
+        code: { type: string, example: "rest_unauthorized" }
+        message: { type: string, example: "Authentication is required." }
+        data: { type: object, properties: { status: { type: integer, example: 401 } } }
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: "A JWT obtained from the /auth/login endpoint."
+
+  responses:
+    UnauthorizedError:
+      description: Authentication information is missing or invalid (401).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ForbiddenError:
+      description: The authenticated user does not have permission to perform this action (403).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFoundError:
+      description: The requested resource was not found (404).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    BadRequestError:
+      description: The request was malformed or missing required parameters (400).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    ConflictError:
+      description: The request could not be completed due to a conflict with the current state of the resource (409).
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    CreatedSuccess:
+      description: The resource was created successfully (201).
+      content:
+        application/json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/SuccessResponse'
+              - type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      userId: { type: integer }
+
+#--------------------------------
+# Paths (API Endpoints)
+#--------------------------------
+paths:
+  # App & Session
+  /app/config:
+    get:
+      tags: [App & Session]
+      summary: Get App Configuration
+      description: Fetches all static, global configuration for the application. This data changes infrequently and should be cached heavily by the client for the duration of a session.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: Successful response containing all application configuration.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          settings:
+                            type: object
+                            description: "Brand personality and theme settings."
+                          all_ranks:
+                            type: object
+                            description: "A dictionary of all available ranks, keyed by rank key."
+                            additionalProperties:
+                              $ref: '#/components/schemas/Rank'
+                          all_achievements:
+                            type: object
+                            description: "A dictionary of all available achievements, keyed by achievement key."
+                            additionalProperties:
+                              $ref: '#/components/schemas/Achievement'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me/session:
+    get:
+      tags: [App & Session]
+      summary: Get Session Data
+      description: A lightweight 'heartbeat' endpoint. Verifies the user's token and returns the minimal data needed to render the authenticated app shell.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/SessionUser'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me/orders:
+    get:
+      tags: [User Profile & Data]
+      summary: Get User's Redeemed Orders
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          orders:
+                            type: array
+                            items:
+                              $ref: '#/components/schemas/Order'
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  # User Profile & Data
+  /users/me/dashboard:
+    get:
+      tags: [User Profile & Data]
+      summary: Get Dashboard Data
+      description: Fetches the dynamic, personalized data and UI suggestions for the main user dashboard.
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lifetime_points: { type: integer }
+                  active_goal_id: { type: integer, nullable: true }
+                  wishlist_count: { type: integer }
+                  achievements_in_progress: { type: object }
+                  ui_suggestions: { type: array, items: { type: object } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  /users/me/profile:
+    get:
+      tags: [User Profile & Data]
+      summary: Get Full Profile Data
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  lastName: { type: string, nullable: true }
+                  phone_number: { type: string, nullable: true }
+                  referral_code: { type: string, nullable: true }
+                  shipping_address: { $ref: '#/components/schemas/ShippingAddress' }
+                  unlocked_achievement_keys: { type: array, items: { type: string } }
+                  custom_fields:
+                    type: object
+                    properties:
+                      definitions: { type: array, items: { $ref: '#/components/schemas/CustomFieldDefinition' } }
+                      values: { type: object }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+    post:
+      tags: [User Profile & Data]
+      summary: Update Profile Data
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        description: A payload containing only the fields to be updated.
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                firstName: { type: string }
+                lastName: { type: string }
+                phone_number: { type: string }
+                custom_fields:
+                  type: object
+                  example: { "favorite_strain_type": "Indica" }
+      responses:
+        '200':
+          description: Update successful. Returns the full, updated profile object.
+          content:
+            application/json:
+              schema:
+                $ref: '#/paths/~1users~1me~1profile/get/responses/200/content/application~1json/schema'
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  # Economy
+  /catalog:
+    get:
+      tags: [Economy]
+      summary: Get Rewards Catalog
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  featured_rewards: { type: array, items: { $ref: '#/components/schemas/RewardProduct' } }
+                  all_rewards: { type: array, items: { $ref: '#/components/schemas/RewardProduct' } }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  # Actions
+  /actions/claim:
+    post:
+      tags: [Actions]
+      summary: Process a Product Scan
+      description: Initiates the core 'product_scanned' event. The response reflects only the immediate economic outcome.
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string, example: "SKU123-ABCDEF9876" }
+      responses:
+        '200':
+          description: Scan processed successfully.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          message: { type: string, example: "You earned 400 points!" }
+                          points_earned: { type: integer, example: 400 }
+                          new_points_balance: { type: integer, example: 1650 }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /actions/redeem:
+    post:
+      tags: [Actions]
+      summary: Redeem a Reward
+      security: [ { bearerAuth: [] } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [productId]
+              properties:
+                productId: { type: integer, example: 82 }
+                shippingDetails: { $ref: '#/components/schemas/ShippingAddress', nullable: true }
+      responses:
+        '200':
+          description: Redemption successful.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          order_id: { type: integer, example: 12345 }
+                          new_points_balance: { type: integer, example: 800 }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '402': { description: Insufficient points. }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+  
+  /unauthenticated/claim:
+    post:
+      tags: [Actions]
+      summary: Process an Unauthenticated Product Scan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code: { type: string }
+      responses:
+        '200':
+          description: Code is valid, registration is required.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuccessResponse'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        properties:
+                          status: { type: string, example: 'registration_required' }
+                          registration_token: { type: string }
+                          reward_preview:
+                            type: object
+                            properties:
+                              id: { type: integer }
+                              name: { type: string }
+                              image: { type: string, format: uri }
+
+  # Pages
+  /pages/{slug}:
+    get:
+      tags: [Pages]
+      summary: Get Page Content
+      parameters: [ { name: slug, in: path, required: true, schema: { type: string, example: "terms-and-conditions" } } ]
+      security: [ { bearerAuth: [] } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  title: { type: string }
+                  content: { type: string, description: "HTML content of the page." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  # Authentication
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register User
+      description: Creates a new user account. Returns a success message and user ID. The client should typically proceed to log the user in to get a token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201': { $ref: '#/components/responses/CreatedSuccess' }
+        '409': { $ref: '#/components/responses/ConflictError' }
+        '400': { $ref: '#/components/responses/BadRequestError' }
+
+  /auth/register-with-token:
+    post:
+      tags: [Authentication]
+      summary: Register user with a claim token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                firstName: { type: string }
+                lastName: { type: string }
+                agreedToTerms: { type: boolean }
+                registration_token: { type: string }
+      responses:
+        '200':
+          description: Registration successful, JWT returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string }
+                  user_email: { type: string, format: email }
+                  user_display_name: { type: string }
+                  user_nicename: { type: string }
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with Password
+      description: Authenticates a user with email/password and returns a JWT for subsequent authenticated requests.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Authentication successful, JWT returned.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token: { type: string, example: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." }
+                  user_email: { type: string, format: email }
+                  user_display_name: { type: string }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
 </file>
 
 <file path="docs/Project genesis/project_genesis.md">
@@ -2567,6 +3326,130 @@ if ($cached_ranks) {
 }
 </file>
 
+<file path="tests-api/economy-component.spec.js">
+import { test, expect } from '@playwright/test';
+
+test.describe('Component Test: GrantPointsCommandHandler', () => {
+
+  const testUser = {
+    email: `econ_component_test_${Date.now()}@example.com`,
+    id: 0,
+    password: 'test-password-123'
+  };
+
+  // Before all tests in this file, create a dedicated user.
+  test.beforeAll(async ({ request }) => {
+    // Clean up any previous failed runs
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUser.email }
+    });
+
+    // Register the new user
+    const registerResponse = await request.post('/wp-json/rewards/v2/auth/register', {
+        data: {
+          email: testUser.email,
+          password: testUser.password,
+          firstName: 'EconomyComponent',
+          lastName: 'Test',
+          agreedToTerms: true
+        }
+    });
+    expect(registerResponse.ok(), 'Failed to register test user for economy component tests.').toBeTruthy();
+    const body = await registerResponse.json();
+    testUser.id = body.data.userId;
+    expect(testUser.id).toBeGreaterThan(0);
+  });
+
+  // NEW: Before each test, clear the rank cache to ensure our code changes are used.
+  test.beforeEach(async ({ request }) => {
+    const clearCacheResponse = await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'clear_rank_cache' }
+    });
+    expect(clearCacheResponse.ok()).toBeTruthy();
+  });
+
+  // After all tests, clean up the user we created.
+  test.afterAll(async ({ request }) => {
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUser.email }
+    });
+  });
+
+  test('should correctly apply a rank multiplier to granted points', async ({ request }) => {
+    // ARRANGE: Use our helper to set the user's state.
+    // Let's make them a Gold member (lifetime points > 10000) with a known starting balance.
+    // The 'gold' rank has a 2.0x multiplier.
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: {
+        action: 'reset_user_by_email',
+        email: testUser.email,
+        points_balance: 1000,
+        lifetime_points: 15000
+      }
+    });
+
+    // ACT: Call our component harness directly to execute the command handler.
+    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness.php', {
+      data: {
+        // Tell the harness which PHP class to execute
+        component: 'CannaRewards\\Commands\\GrantPointsCommandHandler',
+        // Provide the input data for the Command DTO
+        input: {
+          user_id: testUser.id,
+          base_points: 100,
+          description: 'Test grant with gold multiplier'
+        }
+      }
+    });
+
+    // ASSERT: Check the JSON response from the harness.
+    expect(harnessResponse.ok(), `Harness failed with status ${harnessResponse.status()}`).toBeTruthy();
+    const responseBody = await harnessResponse.json();
+    
+    expect(responseBody.success, `Harness response was not successful. Error: ${responseBody.message}`).toBe(true);
+
+    // Gold rank has a 2.0x multiplier. 100 base points * 2.0 = 200.
+    expect(responseBody.data.points_earned).toBe(200);
+    // Initial balance was 1000. 1000 + 200 = 1200.
+    expect(responseBody.data.new_points_balance).toBe(1200);
+  });
+  
+  test('should not apply a multiplier for a standard member', async ({ request }) => {
+    // ARRANGE: Ensure user is a standard member with a fresh balance.
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: {
+        action: 'reset_user_by_email',
+        email: testUser.email,
+        points_balance: 500,
+        lifetime_points: 500
+      }
+    });
+
+    // ACT: Call the harness.
+    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness.php', {
+      data: {
+        component: 'CannaRewards\\Commands\\GrantPointsCommandHandler',
+        input: {
+          user_id: testUser.id,
+          base_points: 100,
+          description: 'Test grant with no multiplier'
+        }
+      }
+    });
+
+    // ASSERT:
+    expect(harnessResponse.ok()).toBeTruthy();
+    const responseBody = await harnessResponse.json();
+    expect(responseBody.success).toBe(true);
+
+    // Member rank has no multiplier (or 1.0x). Points earned should be base points.
+    expect(responseBody.data.points_earned).toBe(100);
+    // Initial balance was 500. 500 + 100 = 600.
+    expect(responseBody.data.new_points_balance).toBe(600);
+  });
+});
+</file>
+
 <file path="tests-api/healthcheck.spec.js">
 import { test, expect } from '@playwright/test';
 
@@ -2688,6 +3571,140 @@ test.describe('Forensic Audit: Rank Service & Data Layer', () => {
     await setUserPointsAndVerifyRank(request, 4999, 'bronze');
   });
 
+});
+</file>
+
+<file path="tests-api/user-component.spec.js">
+import { test, expect } from '@playwright/test';
+
+test.describe('Component Test: CreateUserCommandHandler', () => {
+  const testUserEmail = `create_user_harness_${Date.now()}@example.com`;
+
+  // Cleanup after the test runs to keep the DB clean.
+  // This uses the new 'delete_user_by_email' action in our helper.
+  test.afterAll(async ({ request }) => {
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUserEmail }
+    });
+  });
+
+  test('should create a new user and return the correct data', async ({ request }) => {
+    // ACT: Call the component harness to directly execute the handler
+    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness.php', {
+      data: {
+        component: 'CannaRewards\\Commands\\CreateUserCommandHandler',
+        input: {
+          email: testUserEmail,
+          password: 'a-secure-password',
+          firstName: 'Harness',
+          lastName: 'Test',
+          phone: '1234567890',
+          agreedToTerms: true,
+          agreedToMarketing: true,
+          referralCode: null
+        }
+      }
+    });
+
+    // ASSERT: Check the result from the harness
+    expect(harnessResponse.ok(), `Harness failed with status ${harnessResponse.status()}`).toBeTruthy();
+    const responseBody = await harnessResponse.json();
+
+    expect(responseBody.success, `Harness response was not successful. Error: ${responseBody.message}`).toBe(true);
+    expect(responseBody.data.success).toBe(true);
+    expect(responseBody.data.message).toBe('Registration successful.');
+    expect(responseBody.data.userId).toBeGreaterThan(0);
+  });
+});
+</file>
+
+<file path="tests-api/user-service.spec.js">
+import { test, expect } from '@playwright/test';
+import { validateApiContract } from './api-contract-validator.js';
+
+test.describe('Component Test: UserService Data Fetching', () => {
+
+  const testUser = {
+    email: `userservice_test_${Date.now()}@example.com`,
+    id: 0,
+    password: 'test-password-123'
+  };
+
+  // Before all tests, create a dedicated user.
+  test.beforeAll(async ({ request }) => {
+    // Clean up any previous failed runs
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUser.email }
+    });
+
+    // Register the new user
+    const registerResponse = await request.post('/wp-json/rewards/v2/auth/register', {
+        data: {
+          email: testUser.email,
+          password: testUser.password,
+          firstName: 'UserService',
+          lastName: 'Test',
+          agreedToTerms: true
+        }
+    });
+    expect(registerResponse.ok(), 'Failed to register test user for user service tests.').toBeTruthy();
+    const body = await registerResponse.json();
+    testUser.id = body.data.userId;
+    expect(testUser.id).toBeGreaterThan(0);
+  });
+  
+  // After all tests, clean up the user.
+  test.afterAll(async ({ request }) => {
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: { action: 'delete_user_by_email', email: testUser.email }
+    });
+  });
+
+  test('get_user_session_data should return a valid SessionUser DTO', async ({ request }) => {
+    // ARRANGE: Set the user to a known state (e.g., Silver rank with a specific point balance)
+    await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
+      form: {
+        action: 'reset_user_by_email',
+        email: testUser.email,
+        points_balance: 7500,
+        lifetime_points: 7500 
+      }
+    });
+
+    // ACT: Call our component harness, telling it to run the UserService method.
+    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness.php', {
+      data: {
+        component: 'CannaRewards\\Services\\UserService',
+        // We add a 'method' key to tell the harness which public method to call
+        method: 'get_user_session_data',
+        // The input is now just the arguments for that method
+        input: {
+          user_id: testUser.id,
+        }
+      }
+    });
+
+    // ASSERT: Check the response from the harness.
+    expect(harnessResponse.ok()).toBeTruthy();
+    const responseBody = await harnessResponse.json();
+    expect(responseBody.success).toBe(true);
+    
+    // Validate the structure of the returned data against our API contract's SessionUser component.
+    // This is a powerful way to ensure our internal DTOs match our public contract.
+    const sessionData = responseBody.data;
+    const validate = await validateApiContract({
+        json: async () => ({ success: true, data: sessionData }),
+        status: () => 200
+    }, '/users/me/session', 'get');
+    expect(validate).toBe(true);
+
+    // Assert specific values to ensure the correct data was fetched.
+    expect(sessionData.id).toBe(testUser.id);
+    expect(sessionData.firstName).toBe('UserService');
+    expect(sessionData.email).toBe(testUser.email);
+    expect(sessionData.points_balance).toBe(7500);
+    expect(sessionData.rank.key).toBe('silver');
+  });
 });
 </file>
 
@@ -4590,22 +5607,6 @@ final class RegisterWithTokenCommand {
 }
 </file>
 
-<file path="includes/CannaRewards/DTO/RankDTO.php">
-<?php
-namespace CannaRewards\DTO;
-
-// A simple, public-property DTO for rank data.
-final class RankDTO {
-    public string $key;
-    public string $name;
-    // --- THE FIX ---
-    // The RankService was trying to add this property dynamically.
-    // By formally declaring it, we resolve the "Creation of dynamic property" error.
-    public int $points;
-    // --- END FIX ---
-}
-</file>
-
 <file path="includes/CannaRewards/Includes/DB.php">
 <?php
 namespace CannaRewards\Includes;
@@ -4688,139 +5689,6 @@ class DB {
             KEY `user_action` (`user_id`, `action_type`)
         ) {$charset_collate};";
         dbDelta($action_log_sql);
-    }
-}
-</file>
-
-<file path="includes/CannaRewards/Infrastructure/WordPressApiWrapper.php">
-<?php
-namespace CannaRewards\Infrastructure;
-
-use WP_Query;
-use WP_User;
-use WC_Product;
-use WC_Order;
-use WP_Error;
-
-/**
- * The single gateway to the global WordPress environment. This is the only
- * class in the application that is allowed to call global WordPress/WooCommerce
- * functions directly. This isolates our domain logic for pure testability.
- */
-final class WordPressApiWrapper {
-    private \wpdb $db;
-
-    public function __construct() {
-        global $wpdb;
-        $this->db = $wpdb;
-    }
-
-    /**
-     * Safely exposes the database prefix to other parts of the application.
-     */
-    public function getDbPrefix(): string {
-        return $this->db->prefix;
-    }
-
-    // --- User & Meta Functions ---
-
-    public function getUserMeta(int $userId, string $key, bool $single = true) {
-        return get_user_meta($userId, $key, $single);
-    }
-
-    public function updateUserMeta(int $userId, string $key, $value): void {
-        update_user_meta($userId, $key, $value);
-    }
-    
-    public function getPostMeta(int $postId, string $key, bool $single = true) {
-        return get_post_meta($postId, $key, $single);
-    }
-    
-    public function getUserById(int $userId): ?WP_User {
-        $user = get_userdata($userId);
-        return $user ?: null;
-    }
-
-    public function findUserBy(string $field, string $value): ?WP_User {
-        $user = get_user_by($field, $value);
-        return $user ?: null;
-    }
-
-    /** @return WP_User[] */
-    public function findUsers(array $args): array {
-        return get_users($args);
-    }
-
-    // --- Post & Query Functions ---
-
-    /** @return \WP_Post[] */
-    public function getPosts(array $args): array {
-        $query = new WP_Query($args);
-        wp_reset_postdata();
-        return $query->posts;
-    }
-
-    public function getPageByPath(string $path, string $output = OBJECT, string $post_type = 'page'): ?\WP_Post {
-        return get_page_by_path($path, $output, $post_type);
-    }
-
-    // --- Options & Transients ---
-
-    public function getOption(string $key, $default = false) {
-        return get_option($key, $default);
-    }
-    
-    public function getTransient(string $key) {
-        return get_transient($key);
-    }
-
-    public function setTransient(string $key, $value, int $expiration): void {
-        set_transient($key, $value, $expiration);
-    }
-
-    // --- WooCommerce Functions ---
-
-    public function getProductIdBySku(string $sku): int {
-        return (int) wc_get_product_id_by_sku($sku);
-    }
-
-    public function getProduct(int $productId): ?WC_Product {
-        return wc_get_product($productId);
-    }
-
-    /** @return WC_Order|WP_Error */
-    public function createOrder(array $args) {
-        return wc_create_order($args);
-    }
-
-    // --- Database Functions ---
-
-    public function dbGetRow(string $query) {
-        return $this->db->get_row($query);
-    }
-
-    public function dbGetCol(string $query) {
-        return $this->db->get_col($query);
-    }
-
-    public function dbGetVar(string $query) {
-        return $this->db->get_var($query);
-    }
-    
-    public function dbGetResults(string $query) {
-        return $this->db->get_results($query);
-    }
-
-    public function dbInsert(string $table, array $data, array $format = null) {
-        return $this->db->insert($this->db->prefix . $table, $data, $format);
-    }
-    
-    public function dbUpdate(string $table, array $data, array $where, array $format = null, array $where_format = null) {
-        return $this->db->update($this->db->prefix . $table, $data, $where, $format, $where_format);
-    }
-
-    public function dbPrepare(string $query, ...$args) {
-        return $this->db->prepare($query, ...$args);
     }
 }
 </file>
@@ -5646,6 +6514,19 @@ final class RegisterWithTokenCommandHandler {
 }
 </file>
 
+<file path="includes/CannaRewards/DTO/RankDTO.php">
+<?php
+namespace CannaRewards\DTO;
+
+// A simple, public-property DTO for rank data.
+final class RankDTO {
+    public string $key;
+    public string $name;
+    public int $points;
+    public float $point_multiplier;
+}
+</file>
+
 <file path="includes/CannaRewards/Includes/Event.php">
 <?php
 // FILE: includes/CannaRewards/Includes/Event.php
@@ -5742,6 +6623,148 @@ class Integrations {
             status_header(204); // 204 No Content is appropriate for pre-flight
             exit();
         }
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Infrastructure/WordPressApiWrapper.php">
+<?php
+namespace CannaRewards\Infrastructure;
+
+use WP_Query;
+use WP_User;
+use WC_Product;
+use WC_Order;
+use WP_Error;
+
+/**
+ * The single gateway to the global WordPress environment. This is the only
+ * class in the application that is allowed to call global WordPress/WooCommerce
+ * functions directly. This isolates our domain logic for pure testability.
+ */
+final class WordPressApiWrapper {
+    private \wpdb $db;
+
+    public function __construct() {
+        global $wpdb;
+        $this->db = $wpdb;
+    }
+
+    /**
+     * Safely exposes the database prefix to other parts of the application.
+     */
+    public function getDbPrefix(): string {
+        return $this->db->prefix;
+    }
+
+    // --- User & Meta Functions ---
+
+    public function getUserMeta(int $userId, string $key, bool $single = true) {
+        return get_user_meta($userId, $key, $single);
+    }
+
+    public function updateUserMeta(int $userId, string $key, $value): void {
+        update_user_meta($userId, $key, $value);
+    }
+    
+    public function getPostMeta(int $postId, string $key, bool $single = true) {
+        return get_post_meta($postId, $key, $single);
+    }
+    
+    public function getUserById(int $userId): ?WP_User {
+        $user = get_userdata($userId);
+        return $user ?: null;
+    }
+
+    public function findUserBy(string $field, string $value): ?WP_User {
+        $user = get_user_by($field, $value);
+        return $user ?: null;
+    }
+
+    /** @return WP_User[] */
+    public function findUsers(array $args): array {
+        return get_users($args);
+    }
+
+    /**
+     * Wraps the global wp_insert_user function.
+     * @param array $userData The user data array.
+     * @return int|\WP_Error The new user's ID on success, or a WP_Error object on failure.
+     */
+    public function createUser(array $userData): int|\WP_Error {
+        return wp_insert_user($userData);
+    }
+
+    // --- Post & Query Functions ---
+
+    /** @return \WP_Post[] */
+    public function getPosts(array $args): array {
+        $query = new WP_Query($args);
+        wp_reset_postdata();
+        return $query->posts;
+    }
+
+    public function getPageByPath(string $path, string $output = OBJECT, string $post_type = 'page'): ?\WP_Post {
+        return get_page_by_path($path, $output, $post_type);
+    }
+
+    // --- Options & Transients ---
+
+    public function getOption(string $key, $default = false) {
+        return get_option($key, $default);
+    }
+    
+    public function getTransient(string $key) {
+        return get_transient($key);
+    }
+
+    public function setTransient(string $key, $value, int $expiration): void {
+        set_transient($key, $value, $expiration);
+    }
+
+    // --- WooCommerce Functions ---
+
+    public function getProductIdBySku(string $sku): int {
+        return (int) wc_get_product_id_by_sku($sku);
+    }
+
+    public function getProduct(int $productId): ?WC_Product {
+        return wc_get_product($productId);
+    }
+
+    /** @return WC_Order|WP_Error */
+    public function createOrder(array $args) {
+        return wc_create_order($args);
+    }
+
+    // --- Database Functions ---
+
+    public function dbGetRow(string $query) {
+        return $this->db->get_row($query);
+    }
+
+    public function dbGetCol(string $query) {
+        return $this->db->get_col($query);
+    }
+
+    public function dbGetVar(string $query) {
+        return $this->db->get_var($query);
+    }
+    
+    public function dbGetResults(string $query) {
+        return $this->db->get_results($query);
+    }
+
+    public function dbInsert(string $table, array $data, array $format = null) {
+        return $this->db->insert($this->db->prefix . $table, $data, $format);
+    }
+    
+    public function dbUpdate(string $table, array $data, array $where, array $format = null, array $where_format = null) {
+        return $this->db->update($this->db->prefix . $table, $data, $where, $format, $where_format);
+    }
+
+    public function dbPrepare(string $query, ...$args) {
+        return $this->db->prepare($query, ...$args);
     }
 }
 </file>
@@ -6207,93 +7230,6 @@ class ConfigService {
 }
 </file>
 
-<file path="includes/CannaRewards/Services/RankService.php">
-<?php
-namespace CannaRewards\Services;
-
-use CannaRewards\Repositories\UserRepository;
-use CannaRewards\DTO\RankDTO;
-use CannaRewards\Infrastructure\WordPressApiWrapper;
-
-final class RankService {
-    private UserRepository $userRepository;
-    private WordPressApiWrapper $wp;
-    private ?array $rankStructureCache = null;
-
-    public function __construct(UserRepository $userRepository, WordPressApiWrapper $wp) {
-        $this->userRepository = $userRepository;
-        $this->wp = $wp;
-    }
-
-    public function getUserRank(int $userId): RankDTO {
-        $lifetimePoints = $this->userRepository->getLifetimePoints($userId);
-        $ranks = $this->getRankStructure();
-
-        foreach ($ranks as $rank) {
-            if ($lifetimePoints >= $rank->points) {
-                return $rank;
-            }
-        }
-
-        $memberRank = new RankDTO();
-        $memberRank->key = 'member';
-        $memberRank->name = 'Member';
-        $memberRank->points = 0;
-        return $memberRank;
-    }
-
-    public function getRankStructure(): array {
-        if ($this->rankStructureCache !== null) {
-            return $this->rankStructureCache;
-        }
-
-        $cachedRanks = $this->wp->getTransient('canna_rank_structure_dtos');
-        if (is_array($cachedRanks)) {
-            $this->rankStructureCache = $cachedRanks;
-            return $this->rankStructureCache;
-        }
-
-        $ranks = [];
-        $args = [
-            'post_type'      => 'canna_rank',
-            'posts_per_page' => -1,
-            'meta_key'       => 'points_required',
-            'orderby'        => 'meta_value_num',
-            'order'          => 'DESC',
-            'post_status'    => 'publish',
-        ];
-        $rankPosts = $this->wp->getPosts($args);
-
-        foreach ($rankPosts as $post) {
-            $dto = new RankDTO();
-            $dto->key = $post->post_name;
-            $dto->name = $post->post_title;
-            $dto->points = (int) $this->wp->getPostMeta($post->ID, 'points_required', true);
-            $ranks[] = $dto;
-        }
-
-        $memberRank = new RankDTO();
-        $memberRank->key = 'member';
-        $memberRank->name = 'Member';
-        $memberRank->points = 0;
-        $ranks[] = $memberRank;
-
-        usort($ranks, fn($a, $b) => $b->points <=> $a->points);
-        
-        $uniqueRanks = [];
-        foreach ($ranks as $rank) {
-            $uniqueRanks[$rank->key] = $rank;
-        }
-        $ranks = array_values($uniqueRanks);
-
-        $this->wp->setTransient('canna_rank_structure_dtos', $ranks, 12 * HOUR_IN_SECONDS);
-        $this->rankStructureCache = $ranks;
-
-        return $this->rankStructureCache;
-    }
-}
-</file>
-
 <file path="package.json">
 {
   "name": "cannarewards-engine",
@@ -6309,6 +7245,105 @@ final class RankService {
     "test": "npx playwright test"
   }
 }
+</file>
+
+<file path="tests-api/component-harness.php">
+<?php
+/**
+ * A direct execution harness for component-level testing with Playwright.
+ * DANGER: For local development and testing ONLY.
+ */
+
+// 1. Basic Security & Bootstrap
+require_once dirname(__DIR__, 4) . '/wp-load.php';
+
+if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
+    http_response_code(403);
+    echo json_encode(['error' => 'This script is disabled in production.']);
+    exit;
+}
+
+header('Content-Type: application/json');
+
+// 2. Get the DI Container
+$container = CannaRewards();
+
+try {
+    // 3. Decode the request from Playwright
+    $request_body = json_decode(file_get_contents('php://input'), true);
+    $component_class = $request_body['component'] ?? null;
+    $method_to_call = $request_body['method'] ?? 'handle'; // Default to 'handle' for commands
+    $input_data = $request_body['input'] ?? null;
+
+    if (!$component_class || !$input_data) {
+        throw new InvalidArgumentException('Missing "component" or "input" in request body.');
+    }
+
+    // Get the component instance from the container
+    $component_instance = $container->get($component_class);
+    
+    // 4. The Router: Now simplified. We build the input based on the component, then call the method.
+    $input_object = null;
+    switch ($component_class) {
+
+        case \CannaRewards\Commands\CreateUserCommandHandler::class:
+            $input_object = new \CannaRewards\Commands\CreateUserCommand(
+                new \CannaRewards\Domain\ValueObjects\EmailAddress($input_data['email']),
+                (string) ($input_data['password'] ?? ''),
+                (string) ($input_data['firstName'] ?? ''),
+                (string) ($input_data['lastName'] ?? ''),
+                (string) ($input_data['phone'] ?? ''),
+                (bool) ($input_data['agreedToTerms'] ?? false),
+                (bool) ($input_data['agreedToMarketing'] ?? false),
+                $input_data['referralCode'] ?? null
+            );
+            break;
+
+        case \CannaRewards\Commands\GrantPointsCommandHandler::class:
+            $input_object = new \CannaRewards\Commands\GrantPointsCommand(
+                (int) ($input_data['user_id'] ?? 0),
+                (int) ($input_data['base_points'] ?? 0),
+                (string) ($input_data['description'] ?? ''),
+                (float) ($input_data['temp_multiplier'] ?? 1.0)
+            );
+            break;
+        
+        case \CannaRewards\Services\UserService::class:
+            // For services, the input is not a command object, but the direct arguments.
+            // We pass them as an array.
+            $input_object = $input_data;
+            break;
+        
+        default:
+            throw new InvalidArgumentException("No test harness logic defined for component: {$component_class}");
+    }
+    
+    // 5. Execute the component's logic
+    if ($component_instance instanceof \CannaRewards\Services\UserService) {
+        // Special handling for service methods that take array args
+        $result = call_user_func_array([$component_instance, $method_to_call], $input_object);
+    } else {
+        // Default handling for command handlers
+        $result = $component_instance->handle($input_object);
+    }
+
+
+    // 6. Send a successful result back to Playwright
+    // DTOs need to be cast to an array for proper JSON serialization
+    echo json_encode(['success' => true, 'data' => (array) $result]);
+
+} catch (Exception $e) {
+    // 7. Send any exceptions back to Playwright for failure assertions
+    http_response_code(400);
+    echo json_encode([
+        'success' => false,
+        'error'   => get_class($e),
+        'message' => $e->getMessage(),
+        'code'    => $e->getCode(),
+    ]);
+}
+
+exit;
 </file>
 
 <file path="tests-api/onboarding.spec.js">
@@ -6387,114 +7422,6 @@ test.describe('User Onboarding Golden Path', () => {
     expect(ordersData.data.orders[0].items).toContain('Playwright Welcome Gift');
   });
 });
-</file>
-
-<file path="includes/CannaRewards/Repositories/UserRepository.php">
-<?php
-namespace CannaRewards\Repositories;
-
-use CannaRewards\Infrastructure\WordPressApiWrapper;
-
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
-
-/**
- * User Repository
- *
- * Handles all data access logic for users. This is the single source of truth
- * for fetching and persisting user data, abstracting away the underlying
- * WordPress user and usermeta table implementation.
- */
-class UserRepository {
-    private WordPressApiWrapper $wp;
-
-    public function __construct(WordPressApiWrapper $wp) {
-        $this->wp = $wp;
-    }
-    
-    /**
-     * A generic proxy to the wrapper for fetching user meta.
-     * Services should use this instead of accessing the wrapper directly for user data.
-     */
-    public function getUserMeta(int $user_id, string $key, bool $single = true) {
-        return $this->wp->getUserMeta($user_id, $key, $single);
-    }
-
-    public function getPointsBalance(int $user_id): int {
-        $balance = $this->wp->getUserMeta($user_id, '_canna_points_balance', true);
-        return empty($balance) ? 0 : (int) $balance;
-    }
-
-    public function getLifetimePoints(int $user_id): int {
-        $lifetime_points = $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true);
-        return empty($lifetime_points) ? 0 : (int) $lifetime_points;
-    }
-
-    public function getCurrentRankKey(int $user_id): string {
-        $rank_key = $this->wp->getUserMeta($user_id, '_canna_current_rank_key', true);
-        return empty($rank_key) ? 'member' : $rank_key;
-    }
-    
-    public function getReferralCode(int $user_id): ?string {
-        $code = $this->wp->getUserMeta($user_id, '_canna_referral_code', true);
-        return empty($code) ? null : $code;
-    }
-
-    public function findUserIdByReferralCode(string $referral_code): ?int {
-        $users = $this->wp->findUsers([
-            'meta_key'   => '_canna_referral_code',
-            'meta_value' => sanitize_text_field($referral_code),
-            'number'     => 1,
-            'fields'     => 'ID',
-        ]);
-        return !empty($users) ? (int) $users[0] : null;
-    }
-
-    public function getReferringUserId(int $user_id): ?int {
-        $referrer_id = $this->wp->getUserMeta($user_id, '_canna_referred_by_user_id', true);
-        return !empty($referrer_id) ? (int) $referrer_id : null;
-    }
-
-    public function savePointsAndRank(int $user_id, int $new_balance, int $new_lifetime_points, string $new_rank_key): void {
-        $this->wp->updateUserMeta($user_id, '_canna_points_balance', $new_balance);
-        $this->wp->updateUserMeta($user_id, '_canna_lifetime_points', $new_lifetime_points);
-        $this->wp->updateUserMeta($user_id, '_canna_current_rank_key', $new_rank_key);
-    }
-    
-    public function saveReferralCode(int $user_id, string $code): void {
-        $this->wp->updateUserMeta($user_id, '_canna_referral_code', $code);
-    }
-    
-    public function setReferredBy(int $new_user_id, int $referrer_user_id): void {
-        $this->wp->updateUserMeta($new_user_id, '_canna_referred_by_user_id', $referrer_user_id);
-    }
-    
-    public function saveShippingAddress(int $user_id, array $shipping_details): void {
-        if (empty($shipping_details) || !isset($shipping_details['firstName'])) {
-            return;
-        }
-
-        $meta_map = [
-            'firstName' => 'shipping_first_name',
-            'lastName'  => 'shipping_last_name',
-            'address1'  => 'shipping_address_1',
-            'city'      => 'shipping_city',
-            'state'     => 'shipping_state',
-            'zip'       => 'shipping_postcode',
-        ];
-
-        foreach ($meta_map as $frontend_key => $meta_key) {
-            if (isset($shipping_details[$frontend_key])) {
-                $this->wp->updateUserMeta($user_id, $meta_key, sanitize_text_field($shipping_details[$frontend_key]));
-            }
-        }
-        
-        $this->wp->updateUserMeta( $user_id, 'billing_first_name', sanitize_text_field( $shipping_details['firstName'] ?? '' ) );
-        $this->wp->updateUserMeta( $user_id, 'billing_last_name', sanitize_text_field( $shipping_details['lastName'] ?? '' ) );
-    }
-}
 </file>
 
 <file path="includes/CannaRewards/Services/ContextBuilderService.php">
@@ -6623,254 +7550,101 @@ class ContextBuilderService {
 }
 </file>
 
-<file path="tests-api/test-helper.php">
+<file path="includes/CannaRewards/Services/RankService.php">
 <?php
-/**
- * A helper script for Playwright tests to manipulate the database state.
- *
- * IMPORTANT: This file is for local development and testing ONLY.
- * It MUST be excluded from all production deployments via .gitignore.
- */
+namespace CannaRewards\Services;
 
-require_once dirname(__DIR__, 4) . '/wp-load.php';
+use CannaRewards\Repositories\UserRepository;
+use CannaRewards\DTO\RankDTO;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 
-// A simple check to prevent accidental production execution if .gitignore fails.
-if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
-    header('Content-Type: application/json');
-    http_response_code(403);
-    echo json_encode(['success' => false, 'message' => 'This script cannot be run in a production environment.']);
-    exit;
-}
+final class RankService {
+    private UserRepository $userRepository;
+    private WordPressApiWrapper $wp;
+    private ?array $rankStructureCache = null;
 
-header('Content-Type: application/json');
-$action = $_POST['action'] ?? '';
-global $wpdb;
+    public function __construct(UserRepository $userRepository, WordPressApiWrapper $wp) {
+        $this->userRepository = $userRepository;
+        $this->wp = $wp;
+    }
 
-switch ($action) {
+    /**
+     * Get the full RankDTO for a specific rank key.
+     */
+    public function getRankByKey(string $rankKey): ?RankDTO {
+        $ranks = $this->getRankStructure();
+        foreach ($ranks as $rank) {
+            if ($rank->key === $rankKey) {
+                return $rank;
+            }
+        }
+        return null;
+    }
 
-    case 'debug_get_ranks':
+    public function getUserRank(int $userId): RankDTO {
+        $lifetimePoints = $this->userRepository->getLifetimePoints($userId);
+        $ranks = $this->getRankStructure();
+
+        foreach ($ranks as $rank) {
+            if ($lifetimePoints >= $rank->points) {
+                return $rank; // The first one we hit is the correct one due to DESC sorting
+            }
+        }
+        
+        // This will find the 'member' rank DTO from the structure, or a default if not found
+        return $this->getRankByKey('member');
+    }
+
+    public function getRankStructure(): array {
+        if ($this->rankStructureCache !== null) {
+            return $this->rankStructureCache;
+        }
+
+        $cachedRanks = $this->wp->getTransient('canna_rank_structure_dtos_v2'); // Use a new cache key
+        if (is_array($cachedRanks)) {
+            $this->rankStructureCache = $cachedRanks;
+            return $this->rankStructureCache;
+        }
+
+        $ranks = [];
         $args = [
             'post_type'      => 'canna_rank',
             'posts_per_page' => -1,
+            'meta_key'       => 'points_required',
+            'orderby'        => 'meta_value_num',
+            'order'          => 'DESC',
             'post_status'    => 'publish',
         ];
-        $rank_posts = new WP_Query($args);
-        echo json_encode(['success' => true, 'ranks_found' => $rank_posts->posts]);
-        break;
+        $rankPosts = $this->wp->getPosts($args);
 
-    case 'clear_rank_cache':
-        delete_transient('canna_rank_structure_dtos');
-        echo json_encode(['success' => true, 'message' => 'Rank structure cache has been cleared.']);
-        break;
-
-    case 'reset_qr_code':
-        $code = sanitize_text_field($_POST['code'] ?? '');
-        if (empty($code)) {
-            echo json_encode(['success' => false, 'message' => 'Code parameter is missing.']);
-            exit;
-        }
-        $wpdb->delete($wpdb->prefix . 'canna_reward_codes', ['code' => $code]);
-        $wpdb->insert($wpdb->prefix . 'canna_reward_codes', [
-            'code' => $code,
-            'sku'  => 'PWT-001',
-        ]);
-        echo json_encode(['success' => true, 'message' => "Code {$code} has been reset with SKU PWT-001."]);
-        break;
-
-    case 'prepare_test_product':
-        if (!class_exists('WooCommerce')) {
-            echo json_encode(['success' => false, 'message' => 'WooCommerce is not active.']);
-            exit;
-        }
-        $product_id = wc_get_product_id_by_sku('PWT-001');
-        if (!$product_id) {
-            echo json_encode(['success' => false, 'message' => 'Product with SKU PWT-001 does not exist.']);
-            exit;
-        }
-        update_post_meta($product_id, 'points_award', 400);
-        echo json_encode(['success' => true, 'message' => "Test product with SKU PWT-001 (ID: {$product_id}) has been prepared with 400 points award."]);
-        break;
-
-    case 'simulate_previous_scan':
-        $email = sanitize_email($_POST['email'] ?? '');
-        if (empty($email)) {
-            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
-            exit;
-        }
-        $user = get_user_by('email', $email);
-        if ($user) {
-            $wpdb->insert($wpdb->prefix . 'canna_user_action_log', [
-                'user_id' => $user->ID,
-                'action_type' => 'scan',
-                'created_at' => current_time('mysql', 1)
-            ]);
-            echo json_encode(['success' => true, 'message' => "Simulated previous scan for user."]);
-        } else {
-            echo json_encode(['success' => false, 'message' => "User not found."]);
-        }
-        break;
-
-    case 'reset_user_by_email':
-        $email = sanitize_email($_POST['email'] ?? '');
-        if (empty($email)) {
-            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
-            exit;
-        }
-        $user = get_user_by('email', $email);
-        if ($user) {
-            if (class_exists('WooCommerce')) {
-                $orders = wc_get_orders(['customer' => $email]);
-                foreach ($orders as $order) { $order->delete(true); }
-            }
-            if (isset($_POST['points_balance'])) {
-                update_user_meta($user->ID, '_canna_points_balance', absint($_POST['points_balance']));
-            }
-            if (isset($_POST['lifetime_points'])) {
-                update_user_meta($user->ID, '_canna_lifetime_points', absint($_POST['lifetime_points']));
-            }
-            echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
-        } else {
-            echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
-        }
-        break;
-
-    default:
-        http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'Invalid or missing action parameter.']);
-        break;
-}
-
-exit;
-</file>
-
-<file path="includes/CannaRewards/Commands/CreateUserCommandHandler.php">
-<?php
-namespace CannaRewards\Commands;
-
-use CannaRewards\Commands\CreateUserCommand;
-use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Services\ReferralService;
-use CannaRewards\Services\CDPService;
-use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
-use Exception;
-
-final class CreateUserCommandHandler {
-    private $user_repository;
-    private $cdp_service;
-    private $referral_service;
-    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
-
-    public function __construct(
-        UserRepository $user_repository,
-        CDPService $cdp_service,
-        ReferralService $referral_service,
-        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
-    ) {
-        $this->user_repository = $user_repository;
-        $this->cdp_service = $cdp_service;
-        $this->referral_service = $referral_service;
-        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
-    }
-
-    public function handle(CreateUserCommand $command): array {
-        if (!get_option('users_can_register')) {
-            throw new Exception('User registration is currently disabled.', 503);
+        foreach ($rankPosts as $post) {
+            $dto = new RankDTO();
+            $dto->key = $post->post_name;
+            $dto->name = $post->post_title;
+            $dto->points = (int) $this->wp->getPostMeta($post->ID, 'points_required', true);
+            $dto->point_multiplier = (float) $this->wp->getPostMeta($post->ID, 'point_multiplier', true) ?: 1.0;
+            $ranks[] = $dto;
         }
 
-        $email_string = (string) $command->email;
+        $memberRank = new RankDTO();
+        $memberRank->key = 'member';
+        $memberRank->name = 'Member';
+        $memberRank->points = 0;
+        $memberRank->point_multiplier = 1.0; // Members get a 1.0x multiplier
+        $ranks[] = $memberRank;
 
-        if (empty($command->password)) {
-            throw new Exception('A password is required.', 400);
+        // Ensure ranks are unique and sorted correctly
+        $uniqueRanks = [];
+        foreach ($ranks as $rank) {
+            $uniqueRanks[$rank->key] = $rank;
         }
-
-        $user_id = wp_insert_user([
-            'user_login' => $email_string,
-            'user_email' => $email_string,
-            'user_pass'  => $command->password,
-            'first_name' => $command->first_name,
-            'last_name'  => $command->last_name,
-            'role' => 'subscriber'
-        ]);
-
-        if (is_wp_error($user_id)) {
-            throw new Exception($user_id->get_error_message(), 500);
-        }
-
-        update_user_meta($user_id, 'phone_number', $command->phone);
-        update_user_meta($user_id, 'marketing_consent', $command->agreed_to_marketing);
-        update_user_meta($user_id, '_age_gate_confirmed_at', current_time('mysql', 1));
-        $this->user_repository->savePointsAndRank($user_id, 0, 0, 'member');
+        $ranks = array_values($uniqueRanks);
+        usort($ranks, fn($a, $b) => $b->points <=> $a->points);
         
-        $this->referral_service->generate_code_for_new_user($user_id, $command->first_name);
+        $this->wp->setTransient('canna_rank_structure_dtos_v2', $ranks, 12 * HOUR_IN_SECONDS);
+        $this->rankStructureCache = $ranks;
 
-        if ($command->referral_code) {
-            $this->referral_service->process_new_user_referral($user_id, $command->referral_code);
-        }
-        
-        // REFACTOR: Use the injected event bus
-        $this->eventBus->broadcast('user_created', ['user_id' => $user_id, 'referral_code' => $command->referral_code]);
-        $this->cdp_service->track($user_id, 'user_created', ['signup_method' => 'password', 'referral_code_used' => $command->referral_code]);
-
-        return ['success' => true, 'message' => 'Registration successful.', 'userId' => $user_id];
-    }
-}
-</file>
-
-<file path="includes/CannaRewards/Commands/GrantPointsCommandHandler.php">
-<?php
-namespace CannaRewards\Commands;
-
-use CannaRewards\Repositories\UserRepository;
-use CannaRewards\Services\ActionLogService;
-use CannaRewards\Services\RankService;
-use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
-
-final class GrantPointsCommandHandler {
-    private UserRepository $userRepository;
-    private ActionLogService $actionLogService;
-    private RankService $rankService;
-    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
-
-    public function __construct(
-        UserRepository $userRepository,
-        ActionLogService $actionLogService,
-        RankService $rankService,
-        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
-    ) {
-        $this->userRepository = $userRepository;
-        $this->actionLogService = $actionLogService;
-        $this->rankService = $rankService;
-        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
-    }
-
-    public function handle(GrantPointsCommand $command): array {
-        $user_rank_dto    = $this->rankService->getUserRank($command->user_id);
-        $rank_multiplier  = $this->getRankMultiplier($user_rank_dto->key);
-        $final_multiplier = max( $rank_multiplier, $command->temp_multiplier );
-        $points_to_grant  = floor( $command->base_points * $final_multiplier );
-        $current_balance     = $this->userRepository->getPointsBalance($command->user_id);
-        $new_balance         = $current_balance + $points_to_grant;
-        $lifetime_points     = $this->userRepository->getLifetimePoints($command->user_id);
-        $new_lifetime_points = $lifetime_points + $points_to_grant;
-        $this->userRepository->savePointsAndRank($command->user_id, $new_balance, $new_lifetime_points, $user_rank_dto->key);
-        $log_meta_data = [
-            'description'        => $command->description,
-            'points_change'      => $points_to_grant,
-            'new_balance'        => $new_balance,
-        ];
-        $this->actionLogService->record( $command->user_id, 'points_granted', 0, $log_meta_data );
-        
-        // REFACTOR: Use the injected event bus
-        $this->eventBus->broadcast('user_points_granted', ['user_id' => $command->user_id]);
-        
-        return ['points_earned' => $points_to_grant, 'new_points_balance' => $new_balance];
-    }
-
-    private function getRankMultiplier(string $rankKey): float {
-        // This is a bit of a code smell, ideally the RankService would provide this.
-        // For now, we'll leave it as a pragmatic exception.
-        $rank_post = get_page_by_path($rankKey, OBJECT, 'canna_rank');
-        return $rank_post ? (float) get_post_meta($rank_post->ID, 'point_multiplier', true) : 1.0;
+        return $this->rankStructureCache;
     }
 }
 </file>
@@ -7051,64 +7825,144 @@ class OrderRepository {
 }
 </file>
 
-<file path="includes/container.php">
+<file path="tests-api/test-helper.php">
 <?php
-use CannaRewards\Commands;
-use CannaRewards\Policies;
-use CannaRewards\Services;
-use CannaRewards\CannaRewardsEngine;
-use CannaRewards\Includes\EventBusInterface;
-use CannaRewards\Infrastructure\WordPressEventBus;
-use DI\ContainerBuilder;
-use Psr\Container\ContainerInterface;
+/**
+ * A helper script for Playwright tests to manipulate the database state.
+ *
+ * IMPORTANT: This file is for local development and testing ONLY.
+ * It MUST be excluded from all production deployments via .gitignore.
+ */
 
-use function DI\create;
-use function DI\get;
-use function DI\autowire;
+require_once dirname(__DIR__, 4) . '/wp-load.php';
 
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
+// A simple check to prevent accidental production execution if .gitignore fails.
+if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
+    header('Content-Type: application/json');
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'This script cannot be run in a production environment.']);
+    exit;
 }
 
-$containerBuilder = new ContainerBuilder();
-$containerBuilder->useAutowiring(true); // Enable autowiring
+header('Content-Type: application/json');
+$action = $_POST['action'] ?? '';
+global $wpdb;
 
-$containerBuilder->addDefinitions([
-    // --- CONFIGURATION ARRAYS ---
-    'economy_policy_map' => [
-        Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class ],
-    ],
-    'user_policy_map' => [
-        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class ],
-    ],
+switch ($action) {
 
-    // --- INTERFACE BINDING & SINGLETONS ---
-    //
-    // --- THIS IS THE FIX ---
-    // The scope() method was removed. The correct way to define a singleton is
-    // to create the instance once and have the container return that same instance.
-    // The easiest way is to just let the container manage it, and by default,
-    // it will be treated as a singleton for the interface binding.
-    EventBusInterface::class => autowire(WordPressEventBus::class),
-    // --- END FIX ---
-
-    // --- EXPLICIT WIRING FOR SERVICES THAT NEED CONFIG ARRAYS ---
-    Services\EconomyService::class => autowire()
-        ->constructorParameter('policy_map', get('economy_policy_map')),
-
-    Services\UserService::class => autowire()
-        ->constructorParameter('policy_map', get('user_policy_map')),
-    
-    // The main engine class is also built by the container.
-    CannaRewardsEngine::class => create(CannaRewardsEngine::class)
-        ->constructor(get(ContainerInterface::class)),
+    case 'delete_user_by_email':
+        $email = sanitize_email($_POST['email'] ?? '');
+        if (empty($email)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
+            exit;
+        }
         
-    // Allow the container to inject itself if needed.
-    ContainerInterface::class => fn(ContainerInterface $c) => $c,
-]);
+        // This file is required for wp_delete_user()
+        require_once(ABSPATH.'wp-admin/includes/user.php');
+        $user = get_user_by('email', $email);
 
-return $containerBuilder->build();
+        if ($user) {
+            wp_delete_user($user->ID);
+            echo json_encode(['success' => true, 'message' => "User {$email} deleted."]);
+        } else {
+            echo json_encode(['success' => true, 'message' => "User {$email} not found, nothing to delete."]);
+        }
+        break;
+
+    case 'debug_get_ranks':
+        $args = [
+            'post_type'      => 'canna_rank',
+            'posts_per_page' => -1,
+            'post_status'    => 'publish',
+        ];
+        $rank_posts = new WP_Query($args);
+        echo json_encode(['success' => true, 'ranks_found' => $rank_posts->posts]);
+        break;
+
+    case 'clear_rank_cache':
+        delete_transient('canna_rank_structure_dtos');
+        echo json_encode(['success' => true, 'message' => 'Rank structure cache has been cleared.']);
+        break;
+
+    case 'reset_qr_code':
+        $code = sanitize_text_field($_POST['code'] ?? '');
+        if (empty($code)) {
+            echo json_encode(['success' => false, 'message' => 'Code parameter is missing.']);
+            exit;
+        }
+        $wpdb->delete($wpdb->prefix . 'canna_reward_codes', ['code' => $code]);
+        $wpdb->insert($wpdb->prefix . 'canna_reward_codes', [
+            'code' => $code,
+            'sku'  => 'PWT-001',
+        ]);
+        echo json_encode(['success' => true, 'message' => "Code {$code} has been reset with SKU PWT-001."]);
+        break;
+
+    case 'prepare_test_product':
+        if (!class_exists('WooCommerce')) {
+            echo json_encode(['success' => false, 'message' => 'WooCommerce is not active.']);
+            exit;
+        }
+        $product_id = wc_get_product_id_by_sku('PWT-001');
+        if (!$product_id) {
+            echo json_encode(['success' => false, 'message' => 'Product with SKU PWT-001 does not exist.']);
+            exit;
+        }
+        update_post_meta($product_id, 'points_award', 400);
+        echo json_encode(['success' => true, 'message' => "Test product with SKU PWT-001 (ID: {$product_id}) has been prepared with 400 points award."]);
+        break;
+
+    case 'simulate_previous_scan':
+        $email = sanitize_email($_POST['email'] ?? '');
+        if (empty($email)) {
+            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
+            exit;
+        }
+        $user = get_user_by('email', $email);
+        if ($user) {
+            $wpdb->insert($wpdb->prefix . 'canna_user_action_log', [
+                'user_id' => $user->ID,
+                'action_type' => 'scan',
+                'created_at' => current_time('mysql', 1)
+            ]);
+            echo json_encode(['success' => true, 'message' => "Simulated previous scan for user."]);
+        } else {
+            echo json_encode(['success' => false, 'message' => "User not found."]);
+        }
+        break;
+
+    case 'reset_user_by_email':
+        $email = sanitize_email($_POST['email'] ?? '');
+        if (empty($email)) {
+            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
+            exit;
+        }
+        $user = get_user_by('email', $email);
+        if ($user) {
+            if (class_exists('WooCommerce')) {
+                $orders = wc_get_orders(['customer' => $email]);
+                foreach ($orders as $order) { $order->delete(true); }
+            }
+            if (isset($_POST['points_balance'])) {
+                update_user_meta($user->ID, '_canna_points_balance', absint($_POST['points_balance']));
+            }
+            if (isset($_POST['lifetime_points'])) {
+                update_user_meta($user->ID, '_canna_lifetime_points', absint($_POST['lifetime_points']));
+            }
+            echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
+        } else {
+            echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
+        }
+        break;
+
+    default:
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Invalid or missing action parameter.']);
+        break;
+}
+
+exit;
 </file>
 
 <file path="includes/CannaRewards/Api/AuthController.php">
@@ -7242,6 +8096,135 @@ class AuthController {
 }
 </file>
 
+<file path="includes/CannaRewards/Commands/CreateUserCommandHandler.php">
+<?php
+namespace CannaRewards\Commands;
+
+use CannaRewards\Commands\CreateUserCommand;
+use CannaRewards\Repositories\UserRepository;
+use CannaRewards\Services\ReferralService;
+use CannaRewards\Services\CDPService;
+use CannaRewards\Includes\EventBusInterface;
+use Exception;
+
+final class CreateUserCommandHandler {
+    private $user_repository;
+    private $cdp_service;
+    private $referral_service;
+    private EventBusInterface $eventBus;
+
+    public function __construct(
+        UserRepository $user_repository,
+        CDPService $cdp_service,
+        ReferralService $referral_service,
+        EventBusInterface $eventBus
+    ) {
+        $this->user_repository = $user_repository;
+        $this->cdp_service = $cdp_service;
+        $this->referral_service = $referral_service;
+        $this->eventBus = $eventBus;
+    }
+
+    public function handle(CreateUserCommand $command): array {
+        // This is an acceptable global function call, as it's an application-level guard.
+        if (!get_option('users_can_register')) {
+            throw new Exception('User registration is currently disabled.', 503);
+        }
+
+        if (empty($command->password)) {
+            throw new Exception('A password is required.', 400);
+        }
+
+        // --- REFACTORED LOGIC ---
+        // The direct calls to wp_insert_user and update_user_meta have been removed.
+        // The handler now delegates persistence to the UserRepository, cleaning up the logic here.
+        $user_id = $this->user_repository->createUser(
+            (string) $command->email,
+            $command->password,
+            $command->first_name,
+            $command->last_name
+        );
+
+        $this->user_repository->saveInitialMeta($user_id, $command->phone, $command->agreed_to_marketing);
+        $this->user_repository->savePointsAndRank($user_id, 0, 0, 'member');
+        // --- END REFACTORED LOGIC ---
+
+        // The remaining business logic is unchanged.
+        $this->referral_service->generate_code_for_new_user($user_id, $command->first_name);
+
+        if ($command->referral_code) {
+            $this->referral_service->process_new_user_referral($user_id, $command->referral_code);
+        }
+        
+        $this->eventBus->broadcast('user_created', ['user_id' => $user_id, 'referral_code' => $command->referral_code]);
+        $this->cdp_service->track($user_id, 'user_created', ['signup_method' => 'password', 'referral_code_used' => $command->referral_code]);
+
+        return ['success' => true, 'message' => 'Registration successful.', 'userId' => $user_id];
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Commands/GrantPointsCommandHandler.php">
+<?php
+namespace CannaRewards\Commands;
+
+use CannaRewards\Repositories\UserRepository;
+use CannaRewards\Services\ActionLogService;
+use CannaRewards\Services\RankService;
+use CannaRewards\Includes\EventBusInterface;
+
+final class GrantPointsCommandHandler {
+    private UserRepository $userRepository;
+    private ActionLogService $actionLogService;
+    private RankService $rankService;
+    private EventBusInterface $eventBus;
+
+    public function __construct(
+        UserRepository $userRepository,
+        ActionLogService $actionLogService,
+        RankService $rankService,
+        EventBusInterface $eventBus
+    ) {
+        $this->userRepository = $userRepository;
+        $this->actionLogService = $actionLogService;
+        $this->rankService = $rankService;
+        $this->eventBus = $eventBus;
+    }
+
+    public function handle(GrantPointsCommand $command): array {
+        // --- REFACTORED LOGIC ---
+        // Get the user's current, full rank object from the single source of truth.
+        // This removes the leaky, fragile direct DB calls from this handler.
+        $user_rank_dto    = $this->rankService->getUserRank($command->user_id);
+        $rank_multiplier  = $user_rank_dto->point_multiplier;
+        // --- END REFACTORED LOGIC ---
+        
+        $final_multiplier = max( $rank_multiplier, $command->temp_multiplier );
+        $points_to_grant  = floor( $command->base_points * $final_multiplier );
+        
+        $current_balance     = $this->userRepository->getPointsBalance($command->user_id);
+        $new_balance         = $current_balance + $points_to_grant;
+        $lifetime_points     = $this->userRepository->getLifetimePoints($command->user_id);
+        $new_lifetime_points = $lifetime_points + $points_to_grant;
+        
+        $this->userRepository->savePointsAndRank($command->user_id, $new_balance, $new_lifetime_points, $user_rank_dto->key);
+        
+        $log_meta_data = [
+            'description'        => $command->description,
+            'points_change'      => $points_to_grant,
+            'new_balance'        => $new_balance,
+            'base_points'        => $command->base_points,
+            'multiplier_applied' => $final_multiplier,
+        ];
+        $this->actionLogService->record( $command->user_id, 'points_granted', 0, $log_meta_data );
+        
+        $this->eventBus->broadcast('user_points_granted', ['user_id' => $command->user_id]);
+        
+        return ['points_earned' => $points_to_grant, 'new_points_balance' => $new_balance];
+    }
+}
+</file>
+
 <file path="includes/CannaRewards/Commands/ProcessProductScanCommandHandler.php">
 <?php
 namespace CannaRewards\Commands;
@@ -7327,6 +8310,175 @@ final class ProcessProductScanCommandHandler {
         $this->eventBus->broadcast('product_scanned', $context);
         
         return ['success' => true, 'message' => $message] + $points_result;
+    }
+}
+</file>
+
+<file path="includes/CannaRewards/Repositories/UserRepository.php">
+<?php
+namespace CannaRewards\Repositories;
+
+use CannaRewards\DTO\ShippingAddressDTO;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
+}
+
+/**
+ * User Repository
+ *
+ * Handles all data access logic for users. This is the single source of truth
+ * for fetching and persisting user data, abstracting away the underlying
+ * WordPress user and usermeta table implementation.
+ */
+class UserRepository {
+    private WordPressApiWrapper $wp;
+
+    public function __construct(WordPressApiWrapper $wp) {
+        $this->wp = $wp;
+    }
+
+    /**
+     * Retrieves the core user object (\WP_User).
+     * This is one of the few places where returning a WordPress-specific object is acceptable,
+     * as it's the raw data source that services will adapt into DTOs.
+     */
+    public function getUserCoreData(int $user_id): ?\WP_User {
+        return $this->wp->getUserById($user_id);
+    }
+    
+    /**
+     * Creates a new WordPress user.
+     * @throws \Exception If user creation fails.
+     * @return int The new user's ID.
+     */
+    public function createUser(string $email, string $password, string $firstName, string $lastName): int {
+        $user_id = $this->wp->createUser([
+            'user_login' => $email,
+            'user_email' => $email,
+            'user_pass'  => $password,
+            'first_name' => $firstName,
+            'last_name'  => $lastName,
+            'role' => 'subscriber'
+        ]);
+
+        if (is_wp_error($user_id)) {
+            throw new \Exception($user_id->get_error_message(), 500);
+        }
+        return (int) $user_id;
+    }
+
+    /**
+     * Saves the initial meta fields for a newly registered user.
+     */
+    public function saveInitialMeta(int $userId, string $phone, bool $agreedToMarketing): void {
+        $this->wp->updateUserMeta($userId, 'phone_number', $phone);
+        $this->wp->updateUserMeta($userId, 'marketing_consent', $agreedToMarketing);
+        $this->wp->updateUserMeta($userId, '_age_gate_confirmed_at', current_time('mysql', 1));
+    }
+
+    /**
+     * A generic proxy to the wrapper for fetching user meta.
+     * Services should use this instead of accessing the wrapper directly for user data.
+     */
+    public function getUserMeta(int $user_id, string $key, bool $single = true) {
+        return $this->wp->getUserMeta($user_id, $key, $single);
+    }
+
+    public function getPointsBalance(int $user_id): int {
+        $balance = $this->wp->getUserMeta($user_id, '_canna_points_balance', true);
+        return empty($balance) ? 0 : (int) $balance;
+    }
+
+    public function getLifetimePoints(int $user_id): int {
+        $lifetime_points = $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true);
+        return empty($lifetime_points) ? 0 : (int) $lifetime_points;
+    }
+
+    public function getCurrentRankKey(int $user_id): string {
+        $rank_key = $this->wp->getUserMeta($user_id, '_canna_current_rank_key', true);
+        return empty($rank_key) ? 'member' : $rank_key;
+    }
+    
+    public function getReferralCode(int $user_id): ?string {
+        $code = $this->wp->getUserMeta($user_id, '_canna_referral_code', true);
+        return empty($code) ? null : $code;
+    }
+
+    public function findUserIdByReferralCode(string $referral_code): ?int {
+        $users = $this->wp->findUsers([
+            'meta_key'   => '_canna_referral_code',
+            'meta_value' => sanitize_text_field($referral_code),
+            'number'     => 1,
+            'fields'     => 'ID',
+        ]);
+        return !empty($users) ? (int) $users[0] : null;
+    }
+
+    public function getReferringUserId(int $user_id): ?int {
+        $referrer_id = $this->wp->getUserMeta($user_id, '_canna_referred_by_user_id', true);
+        return !empty($referrer_id) ? (int) $referrer_id : null;
+    }
+
+    /**
+     * Gets the user's shipping address as a formatted DTO.
+     */
+    public function getShippingAddressDTO(int $user_id): ShippingAddressDTO {
+        $dto = new ShippingAddressDTO();
+        $dto->first_name = $this->wp->getUserMeta($user_id, 'shipping_first_name', true);
+        $dto->last_name = $this->wp->getUserMeta($user_id, 'shipping_last_name', true);
+        $dto->address_1 = $this->wp->getUserMeta($user_id, 'shipping_address_1', true);
+        $dto->city = $this->wp->getUserMeta($user_id, 'shipping_city', true);
+        $dto->state = $this->wp->getUserMeta($user_id, 'shipping_state', true);
+        $dto->postcode = $this->wp->getUserMeta($user_id, 'shipping_postcode', true);
+        return $dto;
+    }
+
+    /**
+     * Gets the user's shipping address as a simple associative array.
+     */
+    public function getShippingAddressArray(int $user_id): array {
+        return (array) $this->getShippingAddressDTO($user_id);
+    }
+
+    public function savePointsAndRank(int $user_id, int $new_balance, int $new_lifetime_points, string $new_rank_key): void {
+        $this->wp->updateUserMeta($user_id, '_canna_points_balance', $new_balance);
+        $this->wp->updateUserMeta($user_id, '_canna_lifetime_points', $new_lifetime_points);
+        $this->wp->updateUserMeta($user_id, '_canna_current_rank_key', $new_rank_key);
+    }
+    
+    public function saveReferralCode(int $user_id, string $code): void {
+        $this->wp->updateUserMeta($user_id, '_canna_referral_code', $code);
+    }
+    
+    public function setReferredBy(int $new_user_id, int $referrer_user_id): void {
+        $this->wp->updateUserMeta($new_user_id, '_canna_referred_by_user_id', $referrer_user_id);
+    }
+    
+    public function saveShippingAddress(int $user_id, array $shipping_details): void {
+        if (empty($shipping_details) || !isset($shipping_details['firstName'])) {
+            return;
+        }
+
+        $meta_map = [
+            'firstName' => 'shipping_first_name',
+            'lastName'  => 'shipping_last_name',
+            'address1'  => 'shipping_address_1',
+            'city'      => 'shipping_city',
+            'state'     => 'shipping_state',
+            'zip'       => 'shipping_postcode',
+        ];
+
+        foreach ($meta_map as $frontend_key => $meta_key) {
+            if (isset($shipping_details[$frontend_key])) {
+                $this->wp->updateUserMeta($user_id, $meta_key, sanitize_text_field($shipping_details[$frontend_key]));
+            }
+        }
+        
+        $this->wp->updateUserMeta( $user_id, 'billing_first_name', sanitize_text_field( $shipping_details['firstName'] ?? '' ) );
+        $this->wp->updateUserMeta( $user_id, 'billing_last_name', sanitize_text_field( $shipping_details['lastName'] ?? '' ) );
     }
 }
 </file>
@@ -7438,37 +8590,80 @@ class ReferralService {
 }
 </file>
 
-<file path="composer.json">
-{
-    "name": "cannarewards/engine",
-    "description": "The all-in-one, self-reliant engine for the CannaRewards PWA.",
-    "type": "wordpress-plugin",
-    "license": "GPL-2.0-or-later",
-    "require": {
-        "php-di/php-di": "^7.0",
-        "justinrainbow/json-schema": "^5.2"
-    },
-    "require-dev": {
-        "wp-coding-standards/wpcs": "^3.0",
-        "phpcompatibility/phpcompatibility-wp": "^2.1"
-    },
-    "autoload": {
-        "psr-4": {
-            "CannaRewards\\": "includes/CannaRewards/"
-        },
-        "files": [
-            "includes/canna-core-functions.php"
-        ]
-    },
-    "scripts": {
-        "lint": "./vendor/bin/phpcs"
-    },
-    "config": {
-        "allow-plugins": {
-            "dealerdirect/phpcodesniffer-composer-installer": true
-        }
-    }
+<file path="includes/container.php">
+<?php
+use CannaRewards\Commands;
+use CannaRewards\Policies;
+use CannaRewards\Repositories;
+use CannaRewards\Services;
+use CannaRewards\CannaRewardsEngine;
+use CannaRewards\Includes\EventBusInterface;
+use CannaRewards\Infrastructure\WordPressEventBus;
+use DI\ContainerBuilder;
+use Psr\Container\ContainerInterface;
+
+use function DI\create;
+use function DI\get;
+use function DI\autowire;
+
+// Exit if accessed directly.
+if ( ! defined( 'WPINC' ) ) {
+    die;
 }
+
+$containerBuilder = new ContainerBuilder();
+$containerBuilder->useAutowiring(true); // Autowiring is still great for simpler classes
+
+$containerBuilder->addDefinitions([
+    // --- CONFIGURATION ARRAYS ---
+    'economy_policy_map' => [
+        Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class ],
+    ],
+    'user_policy_map' => [
+        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class ],
+    ],
+    'economy_command_map' => [
+        Commands\GrantPointsCommand::class => Commands\GrantPointsCommandHandler::class,
+        Commands\RedeemRewardCommand::class => Commands\RedeemRewardCommandHandler::class,
+        Commands\ProcessProductScanCommand::class => Commands\ProcessProductScanCommandHandler::class,
+        Commands\ProcessUnauthenticatedClaimCommand::class => Commands\ProcessUnauthenticatedClaimCommandHandler::class,
+    ],
+
+    // --- INTERFACE BINDING & SINGLETONS ---
+    EventBusInterface::class => autowire(WordPressEventBus::class),
+
+    // --- EXPLICIT WIRING FOR SERVICES ---
+    // This is the core fix. We are now explicitly defining every constructor parameter,
+    // ensuring the container knows exactly how to build these complex services.
+    Services\EconomyService::class => create(Services\EconomyService::class)
+        ->constructor(
+            get(ContainerInterface::class),
+            get('economy_policy_map'),
+            get('economy_command_map'),
+            get(Services\RankService::class),
+            get(Services\ContextBuilderService::class),
+            get(EventBusInterface::class),
+            get(Repositories\UserRepository::class)
+        ),
+
+    Services\UserService::class => create(Services\UserService::class)
+        ->constructor(
+            get(ContainerInterface::class),
+            get('user_policy_map'),
+            get(Services\RankService::class),
+            get(Repositories\CustomFieldRepository::class),
+            get(Repositories\UserRepository::class)
+        ),
+    
+    // The main engine class is also built by the container.
+    CannaRewardsEngine::class => create(CannaRewardsEngine::class)
+        ->constructor(get(ContainerInterface::class)),
+        
+    // Allow the container to inject itself if needed.
+    ContainerInterface::class => fn(ContainerInterface $c) => $c,
+]);
+
+return $containerBuilder->build();
 </file>
 
 <file path="includes/CannaRewards/Services/GamificationService.php">
@@ -7568,6 +8763,41 @@ class GamificationService {
 
         $achievement_details = ['key' => $achievement->achievement_key, 'name' => $achievement->title, 'points_rewarded' => $points_reward];
         $this->action_log_service->record($user_id, 'achievement_unlocked', 0, $achievement_details);
+    }
+}
+</file>
+
+<file path="composer.json">
+{
+    "name": "cannarewards/engine",
+    "description": "The all-in-one, self-reliant engine for the CannaRewards PWA.",
+    "type": "wordpress-plugin",
+    "license": "GPL-2.0-or-later",
+    "require": {
+        "php-di/php-di": "^7.0",
+        "justinrainbow/json-schema": "^5.2"
+    },
+    "require-dev": {
+        "wp-coding-standards/wpcs": "^3.0",
+        "phpcompatibility/phpcompatibility-wp": "^2.1",
+        "pestphp/pest": "^3.8"
+    },
+    "autoload": {
+        "psr-4": {
+            "CannaRewards\\": "includes/CannaRewards/"
+        },
+        "files": [
+            "includes/canna-core-functions.php"
+        ]
+    },
+    "scripts": {
+        "lint": "./vendor/bin/phpcs"
+    },
+    "config": {
+        "allow-plugins": {
+            "dealerdirect/phpcodesniffer-composer-installer": true,
+            "pestphp/pest-plugin": true
+        }
     }
 }
 </file>
@@ -7715,44 +8945,28 @@ final class CannaRewardsEngine {
         $v2_namespace = 'rewards/v2';
         $permission_public = '__return_true';
         $permission_auth   = fn() => is_user_logged_in();
-
-        // --- Session Endpoint Fix ---
-        register_rest_route($v2_namespace, '/users/me/session', [
-            'methods' => 'GET', 
-            'callback' => function() { 
-                $user_service = $this->container->get(Services\UserService::class); 
-                $session_dto = $user_service->get_user_session_data(get_current_user_id());
-                // The (array) cast is critical. It recursively converts the main DTO
-                // and the nested RankDTO into a plain array for the JSON response.
-                return Api\ApiResponse::success((array) $session_dto); 
-            }, 
-            'permission_callback' => $permission_auth
-        ]);
-        // --- End Fix ---
-
-        // A more maintainable way to register routes
+        
+        // A centralized, maintainable way to register all routes.
         $routes = [
+            // Session
+            '/users/me/session' => ['GET', Api\SessionController::class, 'get_session_data', $permission_auth],
+
             // Auth
-            '/auth/register' => ['POST', Api\AuthController::class, 'register_user'],
-            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token'],
-            '/auth/login' => ['POST', Api\AuthController::class, 'login_user'],
+            '/auth/register' => ['POST', Api\AuthController::class, 'register_user', $permission_public],
+            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token', $permission_public],
+            '/auth/login' => ['POST', Api\AuthController::class, 'login_user', $permission_public],
 
             // Actions
-            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim'],
-            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption'],
-            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim'],
+            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim', $permission_auth],
+            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption', $permission_auth],
+            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim', $permission_public],
 
             // User Data
-            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders']
-            // ... Add all other routes here in the same format
+            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth]
         ];
 
         foreach ($routes as $endpoint => $config) {
-            list($method, $controllerClass, $callbackMethod) = $config;
-            // Determine permission based on endpoint
-            $permission = (strpos($endpoint, 'unauthenticated') === false && strpos($endpoint, 'auth') === false) 
-                ? $permission_auth 
-                : $permission_public;
+            list($method, $controllerClass, $callbackMethod, $permission) = $config;
 
             register_rest_route($v2_namespace, $endpoint, [
                 'methods' => $method,
@@ -7770,61 +8984,63 @@ namespace CannaRewards\Services;
 
 use CannaRewards\Commands\GrantPointsCommand;
 use CannaRewards\Includes\EventBusInterface;
+use CannaRewards\Repositories\UserRepository;
 use Exception;
 use Psr\Container\ContainerInterface;
 
 final class EconomyService {
-    private array $command_map = [];
-    private array $policy_map = [];
+    private array $command_map; // Changed from private property to constructor-injected
+    private array $policy_map;
     private ContainerInterface $container;
     private RankService $rankService;
     private ContextBuilderService $contextBuilder;
-    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
+    private EventBusInterface $eventBus;
+    private UserRepository $userRepository;
 
     public function __construct(
         ContainerInterface $container,
         array $policy_map,
+        array $command_map, // Inject the command map
         RankService $rankService,
         ContextBuilderService $contextBuilder,
-        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
+        EventBusInterface $eventBus,
+        UserRepository $userRepository
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
+        $this->command_map = $command_map; // Assign the injected map
         $this->rankService = $rankService;
         $this->contextBuilder = $contextBuilder;
-        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
+        $this->eventBus = $eventBus;
+        $this->userRepository = $userRepository;
 
-        // REFACTOR: Use the injected event bus
         $this->eventBus->listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
         $this->eventBus->listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
         
-        $this->registerCommandHandlers();
+        // The private registerCommandHandlers() method is no longer needed.
     }
 
-    private function registerCommandHandlers(): void {
-        $this->command_map = [
-            \CannaRewards\Commands\GrantPointsCommand::class => \CannaRewards\Commands\GrantPointsCommandHandler::class,
-            \CannaRewards\Commands\RedeemRewardCommand::class => \CannaRewards\Commands\RedeemRewardCommandHandler::class,
-            \CannaRewards\Commands\ProcessProductScanCommand::class => \CannaRewards\Commands\ProcessProductScanCommandHandler::class,
-            \CannaRewards\Commands\ProcessUnauthenticatedClaimCommand::class => \CannaRewards\Commands\ProcessUnauthenticatedClaimCommandHandler::class,
-        ];
-    }
-    
     public function handle($command) {
         $command_class = get_class($command);
 
+        // --- REFACTORED LOGIC ---
+        // This policy logic remains the same, as policies are also configured via DI.
         $policies = $this->policy_map[$command_class] ?? [];
         foreach ($policies as $policy_class) {
             $policy = $this->container->get($policy_class);
             $policy->check($command);
         }
 
+        // The service now uses the injected map to find the correct handler.
+        // It no longer has internal knowledge of which handlers exist.
         if (!isset($this->command_map[$command_class])) {
-            throw new Exception("No handler registered for command: {$command_class}");
+            throw new Exception("No economy handler registered for command: {$command_class}");
         }
         
-        $handler = $this->container->get($this->command_map[$command_class]);
+        $handler_class = $this->command_map[$command_class];
+        $handler = $this->container->get($handler_class); // Use container to build the handler
         return $handler->handle($command);
+        // --- END REFACTORED LOGIC ---
     }
     
     public function handle_grant_points_event(array $payload) {
@@ -7842,20 +9058,19 @@ final class EconomyService {
         $user_id = $payload['user_id'] ?? 0;
         if ($user_id <= 0) return;
 
-        $current_rank_key = $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getCurrentRankKey($user_id);
+        $current_rank_key = $this->userRepository->getCurrentRankKey($user_id);
         $new_rank_dto = $this->rankService->getUserRank($user_id);
 
         if ($new_rank_dto->key !== $current_rank_key) {
-            $this->container->get(\CannaRewards\Repositories\UserRepository::class)->savePointsAndRank(
+            $this->userRepository->savePointsAndRank(
                 $user_id,
-                $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getPointsBalance($user_id),
-                $this->container->get(\CannaRewards\Repositories\UserRepository::class)->getLifetimePoints($user_id),
+                $this->userRepository->getPointsBalance($user_id),
+                $this->userRepository->getLifetimePoints($user_id),
                 $new_rank_dto->key
             );
             
             $context = $this->contextBuilder->build_event_context($user_id);
             
-            // REFACTOR: Use the injected event bus
             $this->eventBus->broadcast('user_rank_changed', $context);
         }
     }
@@ -7871,38 +9086,33 @@ use CannaRewards\DTO\RankDTO;
 use CannaRewards\DTO\SessionUserDTO;
 use CannaRewards\DTO\ShippingAddressDTO;
 use CannaRewards\Repositories\CustomFieldRepository;
-use CannaRewards\Repositories\UserRepository; // <<< --- IMPORT UserRepository
+use CannaRewards\Repositories\UserRepository;
 use Exception;
 use Psr\Container\ContainerInterface;
-
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
 
 /**
  * User Service (Command Bus & Data Fetcher)
  */
 final class UserService {
     private array $command_map = [];
-    private ContainerInterface $container;
+    private ContainerInterface $container; // We still need this to instantiate handlers and policies
     private array $policy_map = [];
     private RankService $rankService;
     private CustomFieldRepository $customFieldRepo;
-    private UserRepository $userRepo; // <<< --- ADD UserRepository PROPERTY
+    private UserRepository $userRepo;
 
     public function __construct(
-        ContainerInterface $container,
+        ContainerInterface $container, // Keep container for lazy-loading handlers/policies
         array $policy_map,
         RankService $rankService,
         CustomFieldRepository $customFieldRepo,
-        UserRepository $userRepo // <<< --- ADD UserRepository DEPENDENCY
+        UserRepository $userRepo
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
         $this->customFieldRepo = $customFieldRepo;
-        $this->userRepo = $userRepo; // <<< --- ASSIGN UserRepository
+        $this->userRepo = $userRepo;
         
         $this->registerCommandHandlers();
     }
@@ -7935,47 +9145,32 @@ final class UserService {
     }
     
     public function get_user_session_data( int $user_id ): SessionUserDTO {
-        $user = get_userdata($user_id); // This is one of the few acceptable direct WP calls, as it's just fetching the core object.
-        if (!$user) {
+        $user_data = $this->userRepo->getUserCoreData($user_id);
+        if (!$user_data) {
             throw new Exception("User with ID {$user_id} not found.");
         }
 
         $rank_dto = $this->rankService->getUserRank($user_id);
 
-        // All of these should technically use the UserRepository for purity,
-        // but get_user_meta is a common pragmatic compromise. Let's fix it properly.
-        $shipping_address = [
-            'shipping_first_name' => $this->userRepo->getUserMeta($user_id, 'shipping_first_name', true),
-            'shipping_last_name'  => $this->userRepo->getUserMeta($user_id, 'shipping_last_name', true),
-            'shipping_address_1'  => $this->userRepo->getUserMeta($user_id, 'shipping_address_1', true),
-            'shipping_city'       => $this->userRepo->getUserMeta($user_id, 'shipping_city', true),
-            'shipping_state'      => $this->userRepo->getUserMeta($user_id, 'shipping_state', true),
-            'shipping_postcode'   => $this->userRepo->getUserMeta($user_id, 'shipping_postcode', true),
-        ];
-
         $session_dto = new SessionUserDTO();
         $session_dto->id = $user_id;
-        $session_dto->firstName = $user->first_name;
-        $session_dto->lastName = $user->last_name;
-        $session_dto->email = $user->user_email;
-        //
-        // --- THIS IS THE FIX ---
-        // Replace the undefined global function with a call to our repository.
+        $session_dto->firstName = $user_data->first_name;
+        $session_dto->lastName = $user_data->last_name;
+        $session_dto->email = $user_data->user_email;
         $session_dto->points_balance = $this->userRepo->getPointsBalance($user_id);
-        // --- END FIX ---
-        //
         $session_dto->rank = $rank_dto;
-        $session_dto->shipping = $shipping_address;
+        $session_dto->shipping = $this->userRepo->getShippingAddressArray($user_id);
         $session_dto->referral_code = $this->userRepo->getReferralCode($user_id);
         $session_dto->onboarding_quest_step = (int) $this->userRepo->getUserMeta($user_id, '_onboarding_quest_step', true) ?: 1;
+        // THIS IS THE FIX: Ensure it's an object, not an array.
         $session_dto->feature_flags = new \stdClass();
 
         return $session_dto;
     }
     
     public function get_full_profile_data( int $user_id ): FullProfileDTO {
-        $user = get_userdata($user_id);
-        if (!$user) {
+        $user_data = $this->userRepo->getUserCoreData($user_id);
+        if (!$user_data) {
             throw new Exception("User with ID {$user_id} not found.");
         }
 
@@ -7988,16 +9183,10 @@ final class UserService {
             }
         }
         
-        $shipping_dto = new ShippingAddressDTO();
-        $shipping_dto->first_name = $this->userRepo->getUserMeta($user_id, 'shipping_first_name', true);
-        $shipping_dto->last_name = $this->userRepo->getUserMeta($user_id, 'shipping_last_name', true);
-        $shipping_dto->address_1 = $this->userRepo->getUserMeta($user_id, 'shipping_address_1', true);
-        $shipping_dto->city = $this->userRepo->getUserMeta($user_id, 'shipping_city', true);
-        $shipping_dto->state = $this->userRepo->getUserMeta($user_id, 'shipping_state', true);
-        $shipping_dto->postcode = $this->userRepo->getUserMeta($user_id, 'shipping_postcode', true);
+        $shipping_dto = $this->userRepo->getShippingAddressDTO($user_id);
 
         $profile_dto = new FullProfileDTO();
-        $profile_dto->lastName = $user->last_name;
+        $profile_dto->lastName = $user_data->last_name;
         $profile_dto->phone_number = $this->userRepo->getUserMeta($user_id, 'phone_number', true);
         $profile_dto->referral_code = $this->userRepo->getReferralCode($user_id);
         $profile_dto->shipping_address = $shipping_dto;
@@ -8011,12 +9200,9 @@ final class UserService {
     }
 
     public function get_user_dashboard_data( int $user_id ): array {
-        // --- THIS IS THE FIX ---
-        // Replace the undefined global function with a call to our repository.
         return [
             'lifetime_points' => $this->userRepo->getLifetimePoints( $user_id ),
         ];
-        // --- END FIX ---
     }
 }
 </file>

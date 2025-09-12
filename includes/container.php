@@ -1,6 +1,7 @@
 <?php
 use CannaRewards\Commands;
 use CannaRewards\Policies;
+use CannaRewards\Repositories;
 use CannaRewards\Services;
 use CannaRewards\CannaRewardsEngine;
 use CannaRewards\Includes\EventBusInterface;
@@ -18,7 +19,7 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 $containerBuilder = new ContainerBuilder();
-$containerBuilder->useAutowiring(true); // Enable autowiring
+$containerBuilder->useAutowiring(true); // Autowiring is still great for simpler classes
 
 $containerBuilder->addDefinitions([
     // --- CONFIGURATION ARRAYS ---
@@ -28,7 +29,6 @@ $containerBuilder->addDefinitions([
     'user_policy_map' => [
         Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class ],
     ],
-    // NEW: Explicitly define the command-to-handler mapping for the economy service
     'economy_command_map' => [
         Commands\GrantPointsCommand::class => Commands\GrantPointsCommandHandler::class,
         Commands\RedeemRewardCommand::class => Commands\RedeemRewardCommandHandler::class,
@@ -39,13 +39,28 @@ $containerBuilder->addDefinitions([
     // --- INTERFACE BINDING & SINGLETONS ---
     EventBusInterface::class => autowire(WordPressEventBus::class),
 
-    // --- EXPLICIT WIRING FOR SERVICES THAT NEED CONFIG ARRAYS ---
-    Services\EconomyService::class => autowire()
-        ->constructorParameter('policy_map', get('economy_policy_map'))
-        ->constructorParameter('command_map', get('economy_command_map')), // Inject the new map
+    // --- EXPLICIT WIRING FOR SERVICES ---
+    // This is the core fix. We are now explicitly defining every constructor parameter,
+    // ensuring the container knows exactly how to build these complex services.
+    Services\EconomyService::class => create(Services\EconomyService::class)
+        ->constructor(
+            get(ContainerInterface::class),
+            get('economy_policy_map'),
+            get('economy_command_map'),
+            get(Services\RankService::class),
+            get(Services\ContextBuilderService::class),
+            get(EventBusInterface::class),
+            get(Repositories\UserRepository::class)
+        ),
 
-    Services\UserService::class => autowire()
-        ->constructorParameter('policy_map', get('user_policy_map')),
+    Services\UserService::class => create(Services\UserService::class)
+        ->constructor(
+            get(ContainerInterface::class),
+            get('user_policy_map'),
+            get(Services\RankService::class),
+            get(Repositories\CustomFieldRepository::class),
+            get(Repositories\UserRepository::class)
+        ),
     
     // The main engine class is also built by the container.
     CannaRewardsEngine::class => create(CannaRewardsEngine::class)

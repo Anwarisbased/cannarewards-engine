@@ -65,9 +65,6 @@ final class UserService {
     }
     
     public function get_user_session_data( int $user_id ): SessionUserDTO {
-        // --- REFACTORED LOGIC ---
-        // Replace direct get_userdata call with a wrapped call in the UserRepository.
-        // The service should not know how to get a "WP_User" object.
         $user_data = $this->userRepo->getUserCoreData($user_id);
         if (!$user_data) {
             throw new Exception("User with ID {$user_id} not found.");
@@ -85,10 +82,10 @@ final class UserService {
         $session_dto->shipping = $this->userRepo->getShippingAddressArray($user_id);
         $session_dto->referral_code = $this->userRepo->getReferralCode($user_id);
         $session_dto->onboarding_quest_step = (int) $this->userRepo->getUserMeta($user_id, '_onboarding_quest_step', true) ?: 1;
+        // THIS IS THE FIX: Ensure it's an object, not an array.
         $session_dto->feature_flags = new \stdClass();
 
         return $session_dto;
-        // --- END REFACTORED LOGIC ---
     }
     
     public function get_full_profile_data( int $user_id ): FullProfileDTO {
