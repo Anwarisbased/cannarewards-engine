@@ -35,8 +35,8 @@ class SessionController {
         // to ensure they are properly serialized into JSON for the response.
         $response_data = json_decode(json_encode($session_dto), true);
         
-        // Ensure feature_flags is an object, not an array
-        if (isset($response_data['feature_flags']) && is_array($response_data['feature_flags'])) {
+        // Ensure feature_flags is an object, not an array, to match the OpenAPI contract.
+        if (isset($response_data['feature_flags']) && is_array($response_data['feature_flags']) && empty($response_data['feature_flags'])) {
             $response_data['feature_flags'] = (object) $response_data['feature_flags'];
         }
 

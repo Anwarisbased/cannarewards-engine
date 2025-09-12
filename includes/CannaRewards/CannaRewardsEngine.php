@@ -33,9 +33,13 @@ final class CannaRewardsEngine {
 
         $this->init_wordpress_components();
         
+        // Instantiate all event-driven services to register their listeners.
         $this->container->get(Services\GamificationService::class);
         $this->container->get(Services\EconomyService::class);
         $this->container->get(Services\ReferralService::class);
+        $this->container->get(Services\RankService::class); // RankService now listens for events
+        $this->container->get(Services\FirstScanBonusService::class); // Our new service
+        $this->container->get(Services\StandardScanService::class); // Our other new service
     }
     
     private function init_wordpress_components() {

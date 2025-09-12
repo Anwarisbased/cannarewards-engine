@@ -118,13 +118,16 @@ test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
         
         expect(claimResponse.ok(), `STEP 4 FAILED: The /actions/claim endpoint returned an error.`).toBeTruthy();
         const claimData = await claimResponse.json();
-        console.log(`  - OK: Scan successful. API reports ${claimData.data.points_earned} points earned.`);
+        console.log(`  - OK: Scan successful. API message: ${claimData.data.message}`);
         
-        // Additional check to ensure points were actually earned
-        expect(claimData.data.points_earned, "STEP 4 FAILED: No points were earned from the scan.").toBeGreaterThan(0);
+        // In the new architecture, points are awarded asynchronously, so we just check for success
+        expect(claimData.data.success, "STEP 4 FAILED: Scan was not successful.").toBe(true);
     });
     
     await test.step("STEP 5: ASSERT - API must now report user's rank as 'silver'", async () => {
+        // Wait a moment for the async points processing to complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
         const finalSession = await request.get('/wp-json/rewards/v2/users/me/session', {
             headers: { 'Authorization': `Bearer ${authToken}` }
         });

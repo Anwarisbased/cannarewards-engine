@@ -1,17 +1,17 @@
 <?php
 namespace CannaRewards\Commands;
 
-use CannaRewards\Services\EconomyService;
 use CannaRewards\Services\UserService;
+use CannaRewards\Services\EconomyService;
 use Exception;
 
 final class RegisterWithTokenCommandHandler {
-    private $user_service;
-    private $economy_service;
+    private UserService $userService;
+    private EconomyService $economyService; // We still need this to dispatch the command
 
-    public function __construct(UserService $user_service, EconomyService $economy_service) {
-        $this->user_service = $user_service;
-        $this->economy_service = $economy_service;
+    public function __construct(UserService $userService, EconomyService $economyService) {
+        $this->userService = $userService;
+        $this->economyService = $economyService;
     }
 
     /**
@@ -23,10 +23,9 @@ final class RegisterWithTokenCommandHandler {
             throw new Exception('Invalid or expired registration token.', 403);
         }
 
-        // 1. Create the user first.
-        // --- FIX: We now receive a trusted EmailAddress object from the command ---
+        // 1. Create the user.
         $create_user_command = new \CannaRewards\Commands\CreateUserCommand(
-            $command->email, // This is now an EmailAddress object
+            $command->email,
             $command->password,
             $command->first_name,
             $command->last_name,
@@ -35,8 +34,7 @@ final class RegisterWithTokenCommandHandler {
             $command->agreed_to_marketing,
             $command->referral_code
         );
-
-        $create_user_result = $this->user_service->handle($create_user_command);
+        $create_user_result = $this->userService->handle($create_user_command);
         $new_user_id = $create_user_result['userId'];
 
         if (!$new_user_id) {
@@ -44,19 +42,20 @@ final class RegisterWithTokenCommandHandler {
         }
 
         // 2. Now that the user exists, dispatch the standard ProcessProductScanCommand.
+        // This command is now simple and just broadcasts an event. Our new services will listen and
+        // correctly identify it as a first scan.
         $process_scan_command = new ProcessProductScanCommand($new_user_id, $claim_code);
-        $this->economy_service->handle($process_scan_command);
+        $this->economyService->handle($process_scan_command);
 
-        // 3. All successful, delete the token so it can't be reused.
+        // 3. All successful, delete the token.
         delete_transient('reg_token_' . $command->registration_token);
         
-        // 4. Log the user in by calling the official JWT endpoint internally.
+        // 4. Log the user in.
         $request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
         $request->set_body_params([
-            'username' => (string) $command->email, // Cast to string for the JWT plugin
+            'username' => (string) $command->email,
             'password' => $command->password
         ]);
-
         $response = rest_do_request($request);
 
         if ($response->is_error()) {
