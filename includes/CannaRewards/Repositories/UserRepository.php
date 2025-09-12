@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Repositories;
 
+use CannaRewards\DTO\ShippingAddressDTO;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -20,6 +21,15 @@ class UserRepository {
 
     public function __construct(WordPressApiWrapper $wp) {
         $this->wp = $wp;
+    }
+
+    /**
+     * Retrieves the core user object (\WP_User).
+     * This is one of the few places where returning a WordPress-specific object is acceptable,
+     * as it's the raw data source that services will adapt into DTOs.
+     */
+    public function getUserCoreData(int $user_id): ?\WP_User {
+        return $this->wp->getUserById($user_id);
     }
     
     /**
@@ -93,6 +103,27 @@ class UserRepository {
     public function getReferringUserId(int $user_id): ?int {
         $referrer_id = $this->wp->getUserMeta($user_id, '_canna_referred_by_user_id', true);
         return !empty($referrer_id) ? (int) $referrer_id : null;
+    }
+
+    /**
+     * Gets the user's shipping address as a formatted DTO.
+     */
+    public function getShippingAddressDTO(int $user_id): ShippingAddressDTO {
+        $dto = new ShippingAddressDTO();
+        $dto->first_name = $this->wp->getUserMeta($user_id, 'shipping_first_name', true);
+        $dto->last_name = $this->wp->getUserMeta($user_id, 'shipping_last_name', true);
+        $dto->address_1 = $this->wp->getUserMeta($user_id, 'shipping_address_1', true);
+        $dto->city = $this->wp->getUserMeta($user_id, 'shipping_city', true);
+        $dto->state = $this->wp->getUserMeta($user_id, 'shipping_state', true);
+        $dto->postcode = $this->wp->getUserMeta($user_id, 'shipping_postcode', true);
+        return $dto;
+    }
+
+    /**
+     * Gets the user's shipping address as a simple associative array.
+     */
+    public function getShippingAddressArray(int $user_id): array {
+        return (array) $this->getShippingAddressDTO($user_id);
     }
 
     public function savePointsAndRank(int $user_id, int $new_balance, int $new_lifetime_points, string $new_rank_key): void {
