@@ -4,6 +4,7 @@ namespace CannaRewards\Api;
 use WP_REST_Request;
 use CannaRewards\Services\UserService;
 use CannaRewards\Commands\UpdateProfileCommand;
+use CannaRewards\Api\Requests\UpdateProfileRequest; // Import the new request
 use Exception;
 
 // Exit if accessed directly.
@@ -29,16 +30,11 @@ class ProfileController {
         return ApiResponse::success(['profile' => $profile_data]);
     }
 
-    public function update_profile( WP_REST_Request $request ) {
+    public function update_profile( UpdateProfileRequest $request ) {
         $user_id = get_current_user_id();
-        $data    = $request->get_json_params();
-
-        if ( empty( $data ) ) {
-            return ApiResponse::bad_request('No data provided for update.');
-        }
-
+        
         try {
-            $command = new UpdateProfileCommand($user_id, $data);
+            $command = $request->to_command($user_id);
             $this->user_service->handle($command);
             
             // After updating, get the fresh profile data to return

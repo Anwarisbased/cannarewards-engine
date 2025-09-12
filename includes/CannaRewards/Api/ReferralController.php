@@ -3,6 +3,7 @@ namespace CannaRewards\Api;
 
 use WP_REST_Request;
 use CannaRewards\Services\ReferralService;
+use CannaRewards\Api\Requests\NudgeReferralRequest; // Import the new request
 use Exception;
 
 // Exit if accessed directly.
@@ -37,13 +38,9 @@ class ReferralController {
     /**
      * Callback for POST /v2/users/me/referrals/nudge
      */
-    public function get_nudge_options( WP_REST_Request $request ) {
+    public function get_nudge_options( NudgeReferralRequest $request ) {
         $user_id = get_current_user_id();
-        $referee_email = sanitize_email( $request->get_param('email') );
-
-        if ( empty($referee_email) ) {
-            return ApiResponse::bad_request('Referee email is required.');
-        }
+        $referee_email = $request->get_referee_email();
 
         try {
             $options = $this->referral_service->get_nudge_options_for_referee( $user_id, $referee_email );

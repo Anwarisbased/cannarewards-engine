@@ -73,16 +73,16 @@ test.describe('Economy & Redemption Flow', () => {
       data: {
         productId: productIdToRedeem,
         shippingDetails: {
-          firstName: "Test",
-          lastName: "User",
-          address1: "123 Main St",
+          first_name: "Test",
+          last_name: "User",
+          address_1: "123 Main St",
           city: "Anytown",
           state: "CA",
-          zip: "90210"
+          postcode: "90210"
         }
       }
     });
-    
+
     // --- CONTRACT ENFORCEMENT ---
     await expect(async () => await validateApiContract(redeemResponse, '/actions/redeem', 'post')).toPass();
 

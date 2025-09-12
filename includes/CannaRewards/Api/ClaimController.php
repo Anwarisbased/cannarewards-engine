@@ -5,6 +5,8 @@ use WP_REST_Request;
 use CannaRewards\Services\EconomyService;
 use CannaRewards\Commands\ProcessProductScanCommand;
 use CannaRewards\Commands\ProcessUnauthenticatedClaimCommand;
+use CannaRewards\Api\Requests\ClaimRequest;
+use CannaRewards\Api\Requests\UnauthenticatedClaimRequest; // Import the new request
 use Exception;
 
 // Exit if accessed directly.
@@ -19,16 +21,11 @@ class ClaimController {
         $this->economy_service = $economy_service;
     }
 
-    public function process_claim( WP_REST_Request $request ) {
-        $user_id       = get_current_user_id();
-        $code_to_claim = sanitize_text_field( $request->get_param( 'code' ) );
-
-        if ( empty( $code_to_claim ) ) {
-            return ApiResponse::bad_request('A code must be provided.');
-        }
-
+    public function process_claim( ClaimRequest $request ) {
+        $user_id = get_current_user_id();
+        
         try {
-            $command = new ProcessProductScanCommand($user_id, $code_to_claim);
+            $command = $request->to_command($user_id);
             $result = $this->economy_service->handle($command);
             return ApiResponse::success($result);
         } catch ( Exception $e ) {
@@ -36,15 +33,9 @@ class ClaimController {
         }
     }
 
-    public function process_unauthenticated_claim( WP_REST_Request $request ) {
-        $code_to_claim = sanitize_text_field( $request->get_param( 'code' ) );
-
-        if ( empty( $code_to_claim ) ) {
-            return ApiResponse::bad_request('A code must be provided.');
-        }
-
+    public function process_unauthenticated_claim( UnauthenticatedClaimRequest $request ) {
         try {
-            $command = new ProcessUnauthenticatedClaimCommand($code_to_claim);
+            $command = $request->to_command();
             $result = $this->economy_service->handle($command);
             return ApiResponse::success($result);
         } catch ( Exception $e ) {

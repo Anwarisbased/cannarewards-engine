@@ -3,6 +3,7 @@ namespace CannaRewards\Api;
 
 use WP_REST_Request;
 use WP_REST_Response;
+use CannaRewards\Api\Requests\GenerateCodesRequest; // Import the new request
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -38,11 +39,10 @@ class AdminController {
     /**
      * Generates a batch of reward codes.
      */
-    public static function generate_codes(WP_REST_Request $request) {
+    public static function generate_codes(GenerateCodesRequest $request) {
         global $wpdb;
-        $params = $request->get_json_params();
-        $sku = sanitize_text_field($params['sku'] ?? 'DEFAULT-SKU');
-        $quantity = (int)($params['quantity'] ?? 10);
+        $sku = $request->get_sku();
+        $quantity = $request->get_quantity();
         $generated_codes = [];
 
         // Note: The 'points' column is deprecated in the new schema.

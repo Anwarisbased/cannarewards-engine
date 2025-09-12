@@ -106,6 +106,13 @@ final class CannaRewardsEngine {
         $routes = [
             '/users/me/session' => ['GET', Api\SessionController::class, 'get_session_data', $permission_auth],
             '/auth/register' => ['POST', Api\AuthController::class, 'register_user', $permission_public, Api\Requests\RegisterUserRequest::class],
+            '/auth/register-with-token' => ['POST', Api\AuthController::class, 'register_with_token', $permission_public, Api\Requests\RegisterWithTokenRequest::class],
+            '/auth/login' => ['POST', Api\AuthController::class, 'login_user', $permission_public, Api\Requests\LoginFormRequest::class],
+            '/actions/claim' => ['POST', Api\ClaimController::class, 'process_claim', $permission_auth, Api\Requests\ClaimRequest::class],
+            '/actions/redeem' => ['POST', Api\RedeemController::class, 'process_redemption', $permission_auth, Api\Requests\RedeemRequest::class],
+            '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim', $permission_public, Api\Requests\UnauthenticatedClaimRequest::class],
+            '/users/me/profile' => ['POST', Api\ProfileController::class, 'update_profile', $permission_auth, Api\Requests\UpdateProfileRequest::class],
+            '/users/me/referrals/nudge' => ['POST', Api\ReferralController::class, 'get_nudge_options', $permission_auth, Api\Requests\NudgeReferralRequest::class],
             // ... (other routes for now will remain the same until we create FormRequests for them)
         ];
 
@@ -122,11 +129,6 @@ final class CannaRewardsEngine {
 
         // --- OLDER ROUTES (to be refactored) ---
         // This is a temporary measure. We will move all routes to the array above as we create FormRequests for them.
-        register_rest_route($v2_namespace, '/auth/register-with-token', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'register_with_token'], 'permission_callback' => $permission_public ]);
-        register_rest_route($v2_namespace, '/auth/login', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\AuthController::class), 'login_user'], 'permission_callback' => $permission_public ]);
-        register_rest_route($v2_namespace, '/actions/claim', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_claim'], 'permission_callback' => $permission_auth ]);
-        register_rest_route($v2_namespace, '/actions/redeem', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\RedeemController::class), 'process_redemption'], 'permission_callback' => $permission_auth ]);
-        register_rest_route($v2_namespace, '/unauthenticated/claim', [ 'methods' => 'POST', 'callback' => [$this->container->get(Api\ClaimController::class), 'process_unauthenticated_claim'], 'permission_callback' => $permission_public ]);
         register_rest_route($v2_namespace, '/users/me/orders', [ 'methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth ]);
     }
 }

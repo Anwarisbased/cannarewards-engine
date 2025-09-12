@@ -7,6 +7,8 @@ use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
 use CannaRewards\Api\Requests\RegisterUserRequest;
+use CannaRewards\Api\Requests\RegisterWithTokenRequest;
+use CannaRewards\Api\Requests\LoginFormRequest; // Import the new request
 use Exception;
 
 // Exit if accessed directly.
@@ -29,41 +31,18 @@ class AuthController {
         return ApiResponse::success($result, 201);
     }
     
-    public function register_with_token( WP_REST_Request $request ) {
-        try {
-            $params = $request->get_json_params();
-
-            $email_vo = new EmailAddress($params['email'] ?? '');
-            
-            $command = new RegisterWithTokenCommand(
-                $email_vo, // <-- FIX: Pass the validated object, not a string
-                $params['password'] ?? '',
-                sanitize_text_field($params['firstName'] ?? ''),
-                sanitize_text_field($params['lastName'] ?? ''),
-                sanitize_text_field($params['phone'] ?? ''),
-                (bool) ($params['agreedToTerms'] ?? false),
-                (bool) ($params['agreedToMarketing'] ?? false),
-                sanitize_text_field($params['referralCode'] ?? null),
-                sanitize_text_field($params['registration_token'] ?? '')
-            );
-
-            $result = $this->user_service->handle($command);
-            
-            return new \WP_REST_Response($result, 200);
-
-        } catch ( Exception $e ) {
-            return ApiResponse::error($e->getMessage(), 'token_registration_failed', $e->getCode() ?: 400);
-        }
+    public function register_with_token( RegisterWithTokenRequest $request ) {
+        // This entire method is now clean. The try/catch is handled by the route factory.
+        // Validation and data transformation is handled by the Form Request.
+        $command = $request->to_command();
+        $result = $this->user_service->handle($command);
+        return new \WP_REST_Response($result, 200);
     }
 
-    public function login_user( WP_REST_Request $request ) {
-        $params = $request->get_json_params();
-        $email = $params['email'] ?? '';
-        $password = $params['password'] ?? '';
-
-        if ( empty( $email ) || empty( $password ) ) {
-            return ApiResponse::bad_request('Email and password are required.');
-        }
+    public function login_user( LoginFormRequest $request ) {
+        $credentials = $request->get_credentials();
+        $email = $credentials['email'];
+        $password = $credentials['password'];
 
         $internal_request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
         $internal_request->set_body_params(['username' => $email, 'password' => $password]);
