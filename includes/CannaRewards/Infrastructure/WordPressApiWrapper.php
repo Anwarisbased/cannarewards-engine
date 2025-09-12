@@ -56,6 +56,15 @@ final class WordPressApiWrapper {
         return get_users($args);
     }
 
+    /**
+     * Wraps the global wp_insert_user function.
+     * @param array $userData The user data array.
+     * @return int|\WP_Error The new user's ID on success, or a WP_Error object on failure.
+     */
+    public function createUser(array $userData): int|\WP_Error {
+        return wp_insert_user($userData);
+    }
+
     // --- Post & Query Functions ---
 
     /** @return \WP_Post[] */

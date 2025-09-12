@@ -23,6 +23,36 @@ class UserRepository {
     }
     
     /**
+     * Creates a new WordPress user.
+     * @throws \Exception If user creation fails.
+     * @return int The new user's ID.
+     */
+    public function createUser(string $email, string $password, string $firstName, string $lastName): int {
+        $user_id = $this->wp->createUser([
+            'user_login' => $email,
+            'user_email' => $email,
+            'user_pass'  => $password,
+            'first_name' => $firstName,
+            'last_name'  => $lastName,
+            'role' => 'subscriber'
+        ]);
+
+        if (is_wp_error($user_id)) {
+            throw new \Exception($user_id->get_error_message(), 500);
+        }
+        return (int) $user_id;
+    }
+
+    /**
+     * Saves the initial meta fields for a newly registered user.
+     */
+    public function saveInitialMeta(int $userId, string $phone, bool $agreedToMarketing): void {
+        $this->wp->updateUserMeta($userId, 'phone_number', $phone);
+        $this->wp->updateUserMeta($userId, 'marketing_consent', $agreedToMarketing);
+        $this->wp->updateUserMeta($userId, '_age_gate_confirmed_at', current_time('mysql', 1));
+    }
+
+    /**
      * A generic proxy to the wrapper for fetching user meta.
      * Services should use this instead of accessing the wrapper directly for user data.
      */

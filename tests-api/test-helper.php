@@ -22,6 +22,26 @@ global $wpdb;
 
 switch ($action) {
 
+    case 'delete_user_by_email':
+        $email = sanitize_email($_POST['email'] ?? '');
+        if (empty($email)) {
+            http_response_code(400);
+            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
+            exit;
+        }
+        
+        // This file is required for wp_delete_user()
+        require_once(ABSPATH.'wp-admin/includes/user.php');
+        $user = get_user_by('email', $email);
+
+        if ($user) {
+            wp_delete_user($user->ID);
+            echo json_encode(['success' => true, 'message' => "User {$email} deleted."]);
+        } else {
+            echo json_encode(['success' => true, 'message' => "User {$email} not found, nothing to delete."]);
+        }
+        break;
+
     case 'debug_get_ranks':
         $args = [
             'post_type'      => 'canna_rank',
