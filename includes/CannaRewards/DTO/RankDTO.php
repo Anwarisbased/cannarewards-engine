@@ -5,9 +5,6 @@ namespace CannaRewards\DTO;
 final class RankDTO {
     public string $key;
     public string $name;
-    // --- THE FIX ---
-    // The RankService was trying to add this property dynamically.
-    // By formally declaring it, we resolve the "Creation of dynamic property" error.
     public int $points;
-    // --- END FIX ---
+    public float $point_multiplier;
 }

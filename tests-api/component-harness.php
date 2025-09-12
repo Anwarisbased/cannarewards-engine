@@ -50,12 +50,16 @@ try {
             $result = $handler->handle($command);
             break;
 
-        // Add another 'case' here for every other component you want to test
-        // case \CannaRewards\Commands\GrantPointsCommandHandler::class:
-        //     $handler = $container->get($component_class);
-        //     $command = new \CannaRewards\Commands\GrantPointsCommand(/* ... build from input ... */);
-        //     $result = $handler->handle($command);
-        //     break;
+        case \CannaRewards\Commands\GrantPointsCommandHandler::class:
+            $handler = $container->get($component_class);
+            $command = new \CannaRewards\Commands\GrantPointsCommand(
+                (int) ($input_data['user_id'] ?? 0),
+                (int) ($input_data['base_points'] ?? 0),
+                (string) ($input_data['description'] ?? ''),
+                (float) ($input_data['temp_multiplier'] ?? 1.0)
+            );
+            $result = $handler->handle($command);
+            break;
         
         default:
             throw new InvalidArgumentException("No test harness logic defined for component: {$component_class}");

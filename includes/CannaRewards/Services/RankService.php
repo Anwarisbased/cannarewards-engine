@@ -15,21 +15,31 @@ final class RankService {
         $this->wp = $wp;
     }
 
+    /**
+     * Get the full RankDTO for a specific rank key.
+     */
+    public function getRankByKey(string $rankKey): ?RankDTO {
+        $ranks = $this->getRankStructure();
+        foreach ($ranks as $rank) {
+            if ($rank->key === $rankKey) {
+                return $rank;
+            }
+        }
+        return null;
+    }
+
     public function getUserRank(int $userId): RankDTO {
         $lifetimePoints = $this->userRepository->getLifetimePoints($userId);
         $ranks = $this->getRankStructure();
 
         foreach ($ranks as $rank) {
             if ($lifetimePoints >= $rank->points) {
-                return $rank;
+                return $rank; // The first one we hit is the correct one due to DESC sorting
             }
         }
-
-        $memberRank = new RankDTO();
-        $memberRank->key = 'member';
-        $memberRank->name = 'Member';
-        $memberRank->points = 0;
-        return $memberRank;
+        
+        // This will find the 'member' rank DTO from the structure, or a default if not found
+        return $this->getRankByKey('member');
     }
 
     public function getRankStructure(): array {
@@ -37,7 +47,7 @@ final class RankService {
             return $this->rankStructureCache;
         }
 
-        $cachedRanks = $this->wp->getTransient('canna_rank_structure_dtos');
+        $cachedRanks = $this->wp->getTransient('canna_rank_structure_dtos_v2'); // Use a new cache key
         if (is_array($cachedRanks)) {
             $this->rankStructureCache = $cachedRanks;
             return $this->rankStructureCache;
@@ -59,6 +69,7 @@ final class RankService {
             $dto->key = $post->post_name;
             $dto->name = $post->post_title;
             $dto->points = (int) $this->wp->getPostMeta($post->ID, 'points_required', true);
+            $dto->point_multiplier = (float) $this->wp->getPostMeta($post->ID, 'point_multiplier', true) ?: 1.0;
             $ranks[] = $dto;
         }
 
@@ -66,17 +77,18 @@ final class RankService {
         $memberRank->key = 'member';
         $memberRank->name = 'Member';
         $memberRank->points = 0;
+        $memberRank->point_multiplier = 1.0; // Members get a 1.0x multiplier
         $ranks[] = $memberRank;
 
-        usort($ranks, fn($a, $b) => $b->points <=> $a->points);
-        
+        // Ensure ranks are unique and sorted correctly
         $uniqueRanks = [];
         foreach ($ranks as $rank) {
             $uniqueRanks[$rank->key] = $rank;
         }
         $ranks = array_values($uniqueRanks);
-
-        $this->wp->setTransient('canna_rank_structure_dtos', $ranks, 12 * HOUR_IN_SECONDS);
+        usort($ranks, fn($a, $b) => $b->points <=> $a->points);
+        
+        $this->wp->setTransient('canna_rank_structure_dtos_v2', $ranks, 12 * HOUR_IN_SECONDS);
         $this->rankStructureCache = $ranks;
 
         return $this->rankStructureCache;
