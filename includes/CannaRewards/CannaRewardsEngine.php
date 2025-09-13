@@ -115,7 +115,10 @@ final class CannaRewardsEngine {
             '/users/me/referrals/nudge' => ['POST', Api\ReferralController::class, 'get_nudge_options', $permission_auth, Api\Requests\NudgeReferralRequest::class],
             
             // <<<--- REFACTOR: Move the legacy route into the main array
-            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth]
+            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth],
+            // <<<--- REFACTOR: Add password routes with Form Requests
+            '/auth/request-password-reset' => ['POST', Api\AuthController::class, 'request_password_reset', $permission_public, Api\Requests\RequestPasswordResetRequest::class],
+            '/auth/perform-password-reset' => ['POST', Api\AuthController::class, 'perform_password_reset', $permission_public, Api\Requests\PerformPasswordResetRequest::class],
         ];
 
         foreach ($routes as $endpoint => $config) {

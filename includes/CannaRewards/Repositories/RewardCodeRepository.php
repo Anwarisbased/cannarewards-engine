@@ -49,4 +49,14 @@ class RewardCodeRepository {
             ['id' => $code_id]
         );
     }
+    
+    public function generateCodes(string $sku, int $quantity): array {
+        $generated_codes = [];
+        for ($i = 0; $i < $quantity; $i++) {
+            $new_code = strtoupper($sku) . '-' . $this->wp->generatePassword(12, false, false);
+            $this->wp->dbInsert($this->table_name, ['code' => $new_code, 'sku' => $sku]);
+            $generated_codes[] = $new_code;
+        }
+        return $generated_codes;
+    }
 }

@@ -8,7 +8,9 @@ use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
 use CannaRewards\Api\Requests\RegisterUserRequest;
 use CannaRewards\Api\Requests\RegisterWithTokenRequest;
-use CannaRewards\Api\Requests\LoginFormRequest; // Import the new request
+use CannaRewards\Api\Requests\LoginFormRequest;
+use CannaRewards\Api\Requests\RequestPasswordResetRequest; // Import the new request
+use CannaRewards\Api\Requests\PerformPasswordResetRequest; // Import the new request
 use Exception;
 
 // Exit if accessed directly.
@@ -55,23 +57,14 @@ class AuthController {
         return new \WP_REST_Response( $response->get_data(), 200 );
     }
 
-    public function request_password_reset(WP_REST_Request $request) {
-        $params = $request->get_json_params();
-        $email = sanitize_email($params['email'] ?? '');
-        
-        $this->user_service->request_password_reset($email);
-        
-        // Always return success to prevent user enumeration.
+    public function request_password_reset(RequestPasswordResetRequest $request) {
+        $this->user_service->request_password_reset($request->getEmail());
         return new \WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a reset link has been sent.'], 200);
     }
 
-    public function perform_password_reset(WP_REST_Request $request) {
-        $params = $request->get_json_params();
-        $this->user_service->perform_password_reset(
-            sanitize_text_field($params['token'] ?? ''),
-            sanitize_email($params['email'] ?? ''),
-            $params['password'] ?? ''
-        );
+    public function perform_password_reset(PerformPasswordResetRequest $request) {
+        $data = $request->getResetData();
+        $this->user_service->perform_password_reset($data['token'], $data['email'], $data['password']);
         return new \WP_REST_Response(['success' => true, 'message' => 'Password has been reset successfully. You can now log in.'], 200);
     }
 }

@@ -14,8 +14,28 @@ final class CatalogService {
         $this->configService = $configService;
         $this->logRepo = $logRepo;
     }
+    
+    public function get_all_reward_products(): array {
+        // <<<--- REFACTOR: Use the wrapper
+        $products = $this->wp->getProducts([
+            'status' => 'publish',
+            'limit'  => -1,
+        ]);
+
+        $formatted_products = [];
+        foreach ($products as $product) {
+            // Only include products that can be redeemed (i.e., have a points_cost).
+            $points_cost = $product->get_meta('points_cost');
+            if (!empty($points_cost)) {
+                $formatted_products[] = $this->format_product_for_api($product);
+            }
+        }
+
+        return $formatted_products;
+    }
 
     public function get_product_with_eligibility(int $product_id, int $user_id): ?array {
+        // <<<--- REFACTOR: Use the wrapper
         $product = $this->wp->getProduct($product_id);
         if (!$product) {
             return null;
@@ -52,7 +72,8 @@ final class CatalogService {
      */
     public function format_product_for_api($product): array {
         $image_id = $product->get_image_id();
-        $image_url = $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : wc_placeholder_img_src();
+        // Use wrapper methods for WordPress functions
+        $image_url = $image_id ? $this->wp->getAttachmentImageUrl($image_id, 'woocommerce_thumbnail') : $this->wp->getPlaceholderImageSrc();
 
         return [
             'id'          => $product->get_id(),

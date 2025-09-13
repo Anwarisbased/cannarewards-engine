@@ -30,4 +30,11 @@ class ActionLogRepository {
 
         return (int) $this->wp->dbGetVar($query);
     }
+    
+    public function getRecentLogs(int $limit = 100): array {
+        $table_name = 'canna_user_action_log';
+        $full_table_name = $this->wp->getDbPrefix() . $table_name;
+        $query = $this->wp->dbPrepare("SELECT * FROM {$full_table_name} ORDER BY log_id DESC LIMIT %d", $limit);
+        return $this->wp->dbGetResults($query) ?: [];
+    }
 }

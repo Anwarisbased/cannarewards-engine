@@ -94,6 +94,22 @@ final class WordPressApiWrapper {
 
     // --- WooCommerce Functions ---
 
+    /** @return \WC_Product[] */
+    public function getProducts(array $args): array {
+        if (!function_exists('wc_get_products')) {
+            return [];
+        }
+        return wc_get_products($args);
+    }
+    
+    /** @return \WC_Order[] */
+    public function getOrders(array $args): array {
+        if (!function_exists('wc_get_orders')) {
+            return [];
+        }
+        return wc_get_orders($args);
+    }
+
     public function getProductIdBySku(string $sku): int {
         return (int) wc_get_product_id_by_sku($sku);
     }
@@ -105,6 +121,36 @@ final class WordPressApiWrapper {
     /** @return WC_Order|WP_Error */
     public function createOrder(array $args) {
         return wc_create_order($args);
+    }
+
+    // --- WordPress Core Functions ---
+
+    public function isEmail(string $email): bool {
+        return is_email($email);
+    }
+
+    public function emailExists(string $email): bool {
+        return (bool) email_exists($email);
+    }
+    
+    public function getPasswordResetKey(\WP_User $user): string|\WP_Error {
+        return get_password_reset_key($user);
+    }
+    
+    public function sendMail(string $to, string $subject, string $body): bool {
+        return wp_mail($to, $subject, $body);
+    }
+    
+    public function checkPasswordResetKey(string $key, string $login): \WP_User|\WP_Error {
+        return check_password_reset_key($key, $login);
+    }
+
+    public function resetPassword(\WP_User $user, string $new_pass): void {
+        reset_password($user, $new_pass);
+    }
+
+    public function generatePassword(int $length, bool $special_chars, bool $extra_special_chars): string {
+        return wp_generate_password($length, $special_chars, $extra_special_chars);
     }
 
     // --- Database Functions ---
@@ -135,5 +181,13 @@ final class WordPressApiWrapper {
 
     public function dbPrepare(string $query, ...$args) {
         return $this->db->prepare($query, ...$args);
+    }
+    
+    public function getAttachmentImageUrl(int $attachmentId, string $size = 'thumbnail'): string {
+        return wp_get_attachment_image_url($attachmentId, $size);
+    }
+    
+    public function getPlaceholderImageSrc(): string {
+        return wc_placeholder_img_src();
     }
 }

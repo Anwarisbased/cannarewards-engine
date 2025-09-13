@@ -59,11 +59,8 @@ class OrderRepository {
      * @return OrderDTO[]
      */
     public function getUserOrders(int $user_id, int $limit = 50): array {
-        if (!function_exists('wc_get_orders')) { // This is a safe check
-            return [];
-        }
-
-        $orders = wc_get_orders([ // This one is harder to wrap cleanly, so we'll leave it as a pragmatic exception.
+        // <<<--- REFACTOR: Use the wrapper
+        $orders = $this->wp->getOrders([
             'customer_id' => $user_id,
             'limit'       => $limit,
             'orderby'     => 'date',
@@ -74,7 +71,7 @@ class OrderRepository {
 
         $formatted_orders = [];
         foreach ($orders as $order) {
-            $image_url = wc_placeholder_img_src();
+            $image_url = $this->wp->getPlaceholderImageSrc();
             $line_items = $order->get_items();
             
             $item_names = array_map(fn($item) => $item->get_name(), $line_items);
@@ -86,7 +83,7 @@ class OrderRepository {
                 $product = $product_id ? $this->wp->getProduct($product_id) : null;
                 $image_id = $product ? $product->get_image_id() : 0;
                 if ($image_id) {
-                    $image_url = wp_get_attachment_image_url($image_id, 'thumbnail');
+                    $image_url = $this->wp->getAttachmentImageUrl($image_id, 'thumbnail');
                 }
             }
 

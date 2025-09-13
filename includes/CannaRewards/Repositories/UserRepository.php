@@ -32,6 +32,10 @@ class UserRepository {
         return $this->wp->getUserById($user_id);
     }
     
+    public function getUserCoreDataBy(string $field, string $value): ?\WP_User {
+        return $this->wp->findUserBy($field, $value);
+    }
+    
     /**
      * Creates a new WordPress user.
      * @throws \Exception If user creation fails.

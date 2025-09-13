@@ -142,32 +142,33 @@ final class UserService {
     }
     
     public function request_password_reset(string $email): void {
-        if (!is_email($email) || !email_exists($email)) {
-            // Do nothing to prevent user enumeration attacks.
+        // <<<--- REFACTOR: Use the wrapper for all checks and actions
+        if (!$this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->isEmail($email) || !$this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->emailExists($email)) {
             return;
         }
 
-        $user = $this->userRepo->getUserCoreDataBy('email', $email); // Assume this method is added to repo
-        $token = get_password_reset_key($user); // This is a rare acceptable global call in a service.
+        $user = $this->userRepo->getUserCoreDataBy('email', $email);
+        $token = $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->getPasswordResetKey($user);
 
         if (is_wp_error($token)) {
-            // Log this, but don't expose failure to the user.
             error_log('Could not generate password reset token for ' . $email);
             return;
         }
         
+        // This logic is okay, as ConfigService uses the wrapper
         $options = $this->container->get(\CannaRewards\Services\ConfigService::class)->get_app_config();
-        $base_url = $options['settings']['frontend_url'] ?? home_url();
+        $base_url = !empty($options['settings']['brand_personality']['frontend_url']) ? rtrim($options['settings']['brand_personality']['frontend_url'], '/') : home_url();
         $reset_link = "$base_url/reset-password?token=$token&email=" . rawurlencode($email);
 
-        wp_mail($email, 'Your Password Reset Request', "Click to reset: $reset_link");
+        $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->sendMail($email, 'Your Password Reset Request', "Click to reset: $reset_link");
     }
 
     public function perform_password_reset(string $token, string $email, string $password): void {
-        $user = check_password_reset_key($token, $email);
+        // <<<--- REFACTOR: Use the wrapper
+        $user = $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->checkPasswordResetKey($token, $email);
         if (is_wp_error($user)) {
              throw new Exception('Your password reset token is invalid or has expired.', 400);
         }
-        reset_password($user, $password);
+        $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->resetPassword($user, $password);
     }
 }
