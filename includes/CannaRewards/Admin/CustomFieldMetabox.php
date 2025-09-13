@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Admin;
 
+use CannaRewards\Domain\MetaKeys;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;

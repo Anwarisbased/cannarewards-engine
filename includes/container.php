@@ -4,8 +4,10 @@ use CannaRewards\Policies;
 use CannaRewards\Repositories;
 use CannaRewards\Services;
 use CannaRewards\CannaRewardsEngine;
+use CannaRewards\Api\Router;
 use CannaRewards\Includes\EventBusInterface;
 use CannaRewards\Infrastructure\WordPressEventBus;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 use DI\ContainerBuilder;
 use Psr\Container\ContainerInterface;
 
@@ -63,6 +65,10 @@ $containerBuilder->addDefinitions([
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
 
     // --- EXPLICIT WIRING FOR SERVICES ---
+    Services\ContentService::class => create(Services\ContentService::class), // It has no dependencies
+
+    Services\CatalogService::class => autowire(Services\CatalogService::class),
+
     Services\EconomyService::class => create(Services\EconomyService::class)
         ->constructor(
             get(ContainerInterface::class),
@@ -81,14 +87,23 @@ $containerBuilder->addDefinitions([
             get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
 
+    // --- CONTROLLERS ---
+    \CannaRewards\Api\PageController::class => create(\CannaRewards\Api\PageController::class)
+        ->constructor(get(Services\ContentService::class)),
+
     Services\UserService::class => create(Services\UserService::class)
         ->constructor(
             get(ContainerInterface::class),
             get('user_policy_map'),
             get(Services\RankService::class),
             get(Repositories\CustomFieldRepository::class),
-            get(Repositories\UserRepository::class)
+            get(Repositories\UserRepository::class),
+            get(Repositories\OrderRepository::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class) // <<<--- ADD DEPENDENCY
         ),
+        
+    Policies\UserAccountIsUniquePolicy::class => create(Policies\UserAccountIsUniquePolicy::class)
+        ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
         
     Services\ActionLogService::class => create(Services\ActionLogService::class)
         ->constructor(
@@ -137,7 +152,8 @@ $containerBuilder->addDefinitions([
             get(Services\CDPService::class),
             get(Repositories\UserRepository::class),
             get(Repositories\ActionLogRepository::class),
-            get(EventBusInterface::class)
+            get(EventBusInterface::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class) // <<<--- ADD DEPENDENCY
         ),
         
     Services\RulesEngineService::class => create(Services\RulesEngineService::class)
@@ -155,7 +171,8 @@ $containerBuilder->addDefinitions([
     Commands\RegisterWithTokenCommandHandler::class => create(Commands\RegisterWithTokenCommandHandler::class)
         ->constructor(
             get(Services\UserService::class),
-            get(Services\EconomyService::class)
+            get(Services\EconomyService::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
         
     Commands\ProcessUnauthenticatedClaimCommandHandler::class => create(Commands\ProcessUnauthenticatedClaimCommandHandler::class)
@@ -198,7 +215,34 @@ $containerBuilder->addDefinitions([
     CannaRewardsEngine::class => create(CannaRewardsEngine::class)
         ->constructor(get(ContainerInterface::class)),
         
+    Router::class => create(Router::class)
+        ->constructor(get(ContainerInterface::class)),
+        
     ContainerInterface::class => fn(ContainerInterface $c) => $c,
+    
+    // --- ADMIN SERVICES ---
+    \CannaRewards\Admin\FieldFactory::class => create(),
+    \CannaRewards\Admin\AdminMenu::class => autowire(),
+    \CannaRewards\Admin\ProductMetabox::class => autowire(),
+    \CannaRewards\Admin\UserProfile::class => autowire(),
+]);
+
+// Register queue services
+$containerBuilder->addDefinitions([
+    Services\QueueService::class => create(Services\QueueService::class)
+        ->constructor(
+            get(CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
+    
+    Queue\QueueManager::class => create(Queue\QueueManager::class)
+        ->constructor(
+            get(CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
+    
+    Services\FeatureFlagService::class => create(Services\FeatureFlagService::class)
+        ->constructor(
+            get(CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
 ]);
 
 return $containerBuilder->build();
