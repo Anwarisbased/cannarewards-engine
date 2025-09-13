@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 // Helper function to create a new user with a UNIQUE email.
 async function createTestUser(request) {
-  const uniqueEmail = `economy_user_${Date.now()}@example.com`;
+  const uniqueEmail = generateUniqueEmail('economy_user');
   
   // First, ensure the user doesn't exist from a previous failed run.
   await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {

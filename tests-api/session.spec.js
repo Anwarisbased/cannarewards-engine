@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 test.describe('API Endpoint: /users/me/session', () => {
   const testUser = {
-    email: `session_api_test_${Date.now()}@example.com`,
+    email: generateUniqueEmail('session_api_test'),
     id: 0,
     password: 'test-password-123',
     authToken: ''

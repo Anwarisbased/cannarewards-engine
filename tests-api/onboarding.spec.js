@@ -1,7 +1,9 @@
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
+import { generateUniqueTestId, generateUniqueQRCode } from './parallel-fix.js';
 
-const TEST_CODE = 'PWT-001-C03C2878';
+// Generate a unique test code for this test run
+const TEST_CODE = generateUniqueQRCode('PWT-001');
 
 test.describe('User Onboarding Golden Path', () => {
 

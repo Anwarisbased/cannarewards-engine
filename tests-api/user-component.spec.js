@@ -1,7 +1,8 @@
 import { test, expect } from '@playwright/test';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 test.describe('Component Test: CreateUserCommandHandler', () => {
-  const testUserEmail = `create_user_harness_${Date.now()}@example.com`;
+  const testUserEmail = generateUniqueEmail('create_user_harness');
 
   // Cleanup after the test runs to keep the DB clean.
   // This uses the new 'delete_user_by_email' action in our helper.
@@ -13,9 +14,9 @@ test.describe('Component Test: CreateUserCommandHandler', () => {
 
   test('should create a new user and return the correct data', async ({ request }) => {
     // ACT: Call the component harness to directly execute the handler
-    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness.php', {
+    const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness-minimal.php', {
       data: {
-        component: 'CannaRewards\\Commands\\CreateUserCommandHandler',
+        component: 'CannaRewards\\\\Commands\\\\CreateUserCommandHandler',
         input: {
           email: testUserEmail,
           password: 'a-secure-password',

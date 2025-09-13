@@ -15,9 +15,6 @@ if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
 
 header('Content-Type: application/json');
 
-// 2. Get the DI Container
-$container = CannaRewards();
-
 try {
     // 3. Decode the request from Playwright
     $request_body = json_decode(file_get_contents('php://input'), true);
@@ -29,13 +26,27 @@ try {
         throw new InvalidArgumentException('Missing "component" or "input" in request body.');
     }
 
-    // Check if class is already defined to avoid conflicts
+    // 2. Get the DI Container
+    // Use the global container if available
+    if (function_exists('CannaRewards')) {
+        $container = CannaRewards();
+    } else {
+        // Fallback to creating a new container
+        $container = new \DI\Container();
+    }
+
+    // Check if class exists, if not try to load it
     if (!class_exists($component_class, false)) {
-        // Get the component instance from the container
+        // Try to get the component from the container which should handle autoloading
         $component_instance = $container->get($component_class);
     } else {
-        // If class exists, try to get it from the container anyway
-        $component_instance = $container->get($component_class);
+        // Class exists, try to get it from the container
+        try {
+            $component_instance = $container->get($component_class);
+        } catch (Exception $e) {
+            // If that fails, try to create a new instance
+            $component_instance = $container->make($component_class);
+        }
     }
     
     // 4. The Router: Now simplified. We build the input based on the component, then call the method.
