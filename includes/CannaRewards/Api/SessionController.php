@@ -55,9 +55,8 @@ class SessionController {
      * @return \WP_REST_Response The formatted API response.
      */
     public function get_session_data(WP_REST_Request $request): \WP_REST_Response {
-        $user_id = get_current_user_id();
-        
-        $session_dto = $this->userService->get_user_session_data($user_id);
+        // <<<--- REFACTOR: Let the service figure out the user ID
+        $session_dto = $this->userService->get_current_user_session_data();
 
         // The DTO and any nested DTOs (like RankDTO) are recursively converted to an array/object structure
         // to ensure they are properly serialized into JSON for the response.

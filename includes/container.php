@@ -63,6 +63,12 @@ $containerBuilder->addDefinitions([
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
 
     // --- EXPLICIT WIRING FOR SERVICES ---
+    Services\ContentService::class => create(Services\ContentService::class), // It has no dependencies
+
+    // ... you might want a section for controllers ...
+    \CannaRewards\Api\PageController::class => create(\CannaRewards\Api\PageController::class)
+        ->constructor(get(Services\ContentService::class)),
+
     Services\EconomyService::class => create(Services\EconomyService::class)
         ->constructor(
             get(ContainerInterface::class),
@@ -137,8 +143,11 @@ $containerBuilder->addDefinitions([
             get(Services\CDPService::class),
             get(Repositories\UserRepository::class),
             get(Repositories\ActionLogRepository::class),
-            get(EventBusInterface::class)
+            get(EventBusInterface::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class) // <<<--- ADD DEPENDENCY
         ),
+        
+    Services\CatalogService::class => autowire(Services\CatalogService::class),
         
     Services\RulesEngineService::class => create(Services\RulesEngineService::class)
         ->constructor(

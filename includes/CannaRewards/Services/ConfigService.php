@@ -42,6 +42,10 @@ class ConfigService {
     }
     // --- END NEW GETTERS ---
 
+    public function canUsersRegister(): bool {
+        return (bool) $this->wp->getOption('users_can_register');
+    }
+
     /**
      * Assembles the complete application configuration object for the frontend.
      */

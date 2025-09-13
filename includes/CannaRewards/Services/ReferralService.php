@@ -1,28 +1,31 @@
 <?php
 namespace CannaRewards\Services;
 
-use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
+use CannaRewards\Includes\EventBusInterface;
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Repositories\ActionLogRepository;
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT
 
 class ReferralService {
     private CDPService $cdp_service;
     private UserRepository $user_repository;
     private ActionLogRepository $action_log_repository;
-    private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
+    private EventBusInterface $eventBus;
+    private WordPressApiWrapper $wp; // <<<--- ADD PROPERTY
 
     public function __construct(
         CDPService $cdp_service,
         UserRepository $user_repository,
         ActionLogRepository $action_log_repository,
-        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
+        EventBusInterface $eventBus,
+        WordPressApiWrapper $wp // <<<--- INJECT
     ) {
         $this->cdp_service = $cdp_service;
         $this->user_repository = $user_repository;
         $this->action_log_repository = $action_log_repository;
-        $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
+        $this->eventBus = $eventBus;
+        $this->wp = $wp; // <<<--- ASSIGN
         
-        // REFACTOR: Use the injected event bus
         $this->eventBus->listen('product_scanned', [$this, 'handle_referral_conversion']);
     }
 
@@ -55,7 +58,8 @@ class ReferralService {
     }
     
     private function execute_triggers(string $event_key, int $user_id, array $context = []) {
-        $triggers_to_run = get_posts([
+        // <<<--- REFACTOR: Use the wrapper's getPosts method
+        $triggers_to_run = $this->wp->getPosts([
             'post_type'      => 'canna_trigger',
             'posts_per_page' => -1,
             'meta_key'       => 'event_key',

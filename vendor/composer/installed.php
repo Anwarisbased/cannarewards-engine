@@ -3,7 +3,7 @@
         'name' => 'cannarewards/engine',
         'pretty_version' => 'dev-main',
         'version' => 'dev-main',
-        'reference' => '3a563ba14ed50a1dda42ab6fd65fd0a99afe7f0c',
+        'reference' => '0023a20c6ba845fd8a2cc1534255f974c80a566a',
         'type' => 'wordpress-plugin',
         'install_path' => __DIR__ . '/../../',
         'aliases' => array(),
@@ -22,7 +22,7 @@
         'cannarewards/engine' => array(
             'pretty_version' => 'dev-main',
             'version' => 'dev-main',
-            'reference' => '3a563ba14ed50a1dda42ab6fd65fd0a99afe7f0c',
+            'reference' => '0023a20c6ba845fd8a2cc1534255f974c80a566a',
             'type' => 'wordpress-plugin',
             'install_path' => __DIR__ . '/../../',
             'aliases' => array(),
@@ -107,7 +107,7 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../nikic/php-parser',
             'aliases' => array(),
-            'dev_requirement' => true,
+            'dev_requirement' => false,
         ),
         'nunomaduro/collision' => array(
             'pretty_version' => 'v8.8.2',
@@ -356,7 +356,7 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../psr/log',
             'aliases' => array(),
-            'dev_requirement' => true,
+            'dev_requirement' => false,
         ),
         'psr/log-implementation' => array(
             'dev_requirement' => true,
@@ -542,7 +542,7 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../symfony/deprecation-contracts',
             'aliases' => array(),
-            'dev_requirement' => true,
+            'dev_requirement' => false,
         ),
         'symfony/finder' => array(
             'pretty_version' => 'v7.3.2',
@@ -551,7 +551,7 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../symfony/finder',
             'aliases' => array(),
-            'dev_requirement' => true,
+            'dev_requirement' => false,
         ),
         'symfony/polyfill-ctype' => array(
             'pretty_version' => 'v1.33.0',
@@ -560,7 +560,7 @@
             'type' => 'library',
             'install_path' => __DIR__ . '/../symfony/polyfill-ctype',
             'aliases' => array(),
-            'dev_requirement' => true,
+            'dev_requirement' => false,
         ),
         'symfony/polyfill-intl-grapheme' => array(
             'pretty_version' => 'v1.33.0',
@@ -616,6 +616,15 @@
             'aliases' => array(),
             'dev_requirement' => true,
         ),
+        'symfony/yaml' => array(
+            'pretty_version' => 'v7.3.3',
+            'version' => '7.3.3.0',
+            'reference' => 'd4f4a66866fe2451f61296924767280ab5732d9d',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../symfony/yaml',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
         'ta-tikoma/phpunit-architecture-test' => array(
             'pretty_version' => '0.8.5',
             'version' => '0.8.5.0',
@@ -634,6 +643,15 @@
             'aliases' => array(),
             'dev_requirement' => true,
         ),
+        'vlucas/valitron' => array(
+            'pretty_version' => 'v1.4.11',
+            'version' => '1.4.11.0',
+            'reference' => 'fadce39f5f235755bb9794b2573af2d5bfcba85f',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../vlucas/valitron',
+            'aliases' => array(),
+            'dev_requirement' => false,
+        ),
         'webmozart/assert' => array(
             'pretty_version' => '1.11.0',
             'version' => '1.11.0.0',
@@ -651,6 +669,15 @@
             'install_path' => __DIR__ . '/../wp-coding-standards/wpcs',
             'aliases' => array(),
             'dev_requirement' => true,
+        ),
+        'zircote/swagger-php' => array(
+            'pretty_version' => '5.3.2',
+            'version' => '5.3.2.0',
+            'reference' => 'd8fa9dc4c3b2fc8651ae780021bb9719b1e63d40',
+            'type' => 'library',
+            'install_path' => __DIR__ . '/../zircote/swagger-php',
+            'aliases' => array(),
+            'dev_requirement' => false,
         ),
     ),
 );

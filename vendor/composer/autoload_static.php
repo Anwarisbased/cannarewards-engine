@@ -34,6 +34,10 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
             'Whoops\\' => 7,
             'Webmozart\\Assert\\' => 17,
         ),
+        'V' => 
+        array (
+            'Valitron\\' => 9,
+        ),
         'T' => 
         array (
             'Termwind\\' => 9,
@@ -45,6 +49,7 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
             'Symfony\\Polyfill\\Intl\\Grapheme\\' => 31,
             'Symfony\\Polyfill\\Ctype\\' => 23,
             'Symfony\\Contracts\\Service\\' => 26,
+            'Symfony\\Component\\Yaml\\' => 23,
             'Symfony\\Component\\String\\' => 25,
             'Symfony\\Component\\Process\\' => 26,
             'Symfony\\Component\\Finder\\' => 25,
@@ -64,6 +69,10 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
             'PHPUnit\\Architecture\\' => 21,
             'PHPStan\\PhpDocParser\\' => 21,
             'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\' => 57,
+        ),
+        'O' => 
+        array (
+            'OpenApi\\' => 8,
         ),
         'N' => 
         array (
@@ -113,6 +122,10 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
         array (
             0 => __DIR__ . '/..' . '/webmozart/assert/src',
         ),
+        'Valitron\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/vlucas/valitron/src/Valitron',
+        ),
         'Termwind\\' => 
         array (
             0 => __DIR__ . '/..' . '/nunomaduro/termwind/src',
@@ -136,6 +149,10 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
         'Symfony\\Contracts\\Service\\' => 
         array (
             0 => __DIR__ . '/..' . '/symfony/service-contracts',
+        ),
+        'Symfony\\Component\\Yaml\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/symfony/yaml',
         ),
         'Symfony\\Component\\String\\' => 
         array (
@@ -200,6 +217,10 @@ class ComposerStaticInit657dd1fc61ccb3462db486eff7be9986
         'PHPCSStandards\\Composer\\Plugin\\Installers\\PHPCodeSniffer\\' => 
         array (
             0 => __DIR__ . '/..' . '/dealerdirect/phpcodesniffer-composer-installer/src',
+        ),
+        'OpenApi\\' => 
+        array (
+            0 => __DIR__ . '/..' . '/zircote/swagger-php/src',
         ),
         'NunoMaduro\\Collision\\' => 
         array (

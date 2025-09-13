@@ -18,8 +18,9 @@ if ( ! defined( 'WPINC' ) ) {
 class PageController {
     private $content_service;
 
-    public function __construct() {
-        $this->content_service = new ContentService();
+    // <<<--- REFACTOR: Inject the dependency
+    public function __construct(ContentService $content_service) {
+        $this->content_service = $content_service;
     }
 
     /**

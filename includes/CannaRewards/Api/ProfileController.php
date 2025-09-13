@@ -20,8 +20,7 @@ class ProfileController {
     }
 
     public function get_profile( WP_REST_Request $request ) {
-        $user_id = get_current_user_id();
-        $profile_data = $this->user_service->get_full_profile_data( $user_id );
+        $profile_data = $this->user_service->get_current_user_full_profile_data();
 
         if ( empty( $profile_data ) ) {
             return ApiResponse::not_found('User profile not found.');
@@ -31,14 +30,12 @@ class ProfileController {
     }
 
     public function update_profile( UpdateProfileRequest $request ) {
-        $user_id = get_current_user_id();
-        
         try {
-            $command = $request->to_command($user_id);
+            $command = $request->to_command(); // The command will get the user ID from the request
             $this->user_service->handle($command);
             
             // After updating, get the fresh profile data to return
-            $updated_profile = $this->user_service->get_full_profile_data( $user_id );
+            $updated_profile = $this->user_service->get_current_user_full_profile_data();
             return ApiResponse::success(['profile' => $updated_profile]);
         } catch ( Exception $e ) {
             return ApiResponse::error($e->getMessage(), 'update_failed', 500);

@@ -58,37 +58,20 @@ class AuthController {
     public function request_password_reset(WP_REST_Request $request) {
         $params = $request->get_json_params();
         $email = sanitize_email($params['email'] ?? '');
-        $success_response = new \WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a reset link has been sent.'], 200);
-        if (!is_email($email) || !email_exists($email)) {
-            return $success_response;
-        }
-        $user = get_user_by('email', $email);
-        $token = get_password_reset_key($user);
-        if (is_wp_error($token)) {
-            return ApiResponse::error('Could not generate reset token.', 'token_generation_failed', 500);
-        }
-        $options = get_option('canna_rewards_options');
-        $base_url = !empty($options['frontend_url']) ? rtrim($options['frontend_url'], '/') : home_url();
-        $reset_link = "$base_url/reset-password?token=$token&email=" . rawurlencode($email);
-        wp_mail($email, 'Your Password Reset Request', "Click to reset: $reset_link 
-
-This link expires in 1 hour.");
-        return $success_response;
+        
+        $this->user_service->request_password_reset($email);
+        
+        // Always return success to prevent user enumeration.
+        return new \WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a reset link has been sent.'], 200);
     }
 
     public function perform_password_reset(WP_REST_Request $request) {
         $params = $request->get_json_params();
-        $token = sanitize_text_field($params['token'] ?? '');
-        $email = sanitize_email($params['email'] ?? '');
-        $password = $params['password'] ?? '';
-        
-        $user = check_password_reset_key($token, $email);
-        if (is_wp_error($user)) {
-             return ApiResponse::error('Your password reset token is invalid or has expired.', 'invalid_token', 400);
-        }
-
-        reset_password($user, $password);
-        
+        $this->user_service->perform_password_reset(
+            sanitize_text_field($params['token'] ?? ''),
+            sanitize_email($params['email'] ?? ''),
+            $params['password'] ?? ''
+        );
         return new \WP_REST_Response(['success' => true, 'message' => 'Password has been reset successfully. You can now log in.'], 200);
     }
 }

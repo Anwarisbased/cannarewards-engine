@@ -113,7 +113,9 @@ final class CannaRewardsEngine {
             '/unauthenticated/claim' => ['POST', Api\ClaimController::class, 'process_unauthenticated_claim', $permission_public, Api\Requests\UnauthenticatedClaimRequest::class],
             '/users/me/profile' => ['POST', Api\ProfileController::class, 'update_profile', $permission_auth, Api\Requests\UpdateProfileRequest::class],
             '/users/me/referrals/nudge' => ['POST', Api\ReferralController::class, 'get_nudge_options', $permission_auth, Api\Requests\NudgeReferralRequest::class],
-            // ... (other routes for now will remain the same until we create FormRequests for them)
+            
+            // <<<--- REFACTOR: Move the legacy route into the main array
+            '/users/me/orders' => ['GET', Api\OrdersController::class, 'get_orders', $permission_auth]
         ];
 
         foreach ($routes as $endpoint => $config) {
@@ -127,8 +129,6 @@ final class CannaRewardsEngine {
             ]);
         }
 
-        // --- OLDER ROUTES (to be refactored) ---
-        // This is a temporary measure. We will move all routes to the array above as we create FormRequests for them.
-        register_rest_route($v2_namespace, '/users/me/orders', [ 'methods' => 'GET', 'callback' => [$this->container->get(Api\OrdersController::class), 'get_orders'], 'permission_callback' => $permission_auth ]);
+        // <<<--- REFACTOR: The old, separate registration is now gone.
     }
 }

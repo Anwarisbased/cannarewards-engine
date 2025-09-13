@@ -6,6 +6,7 @@ use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Services\ReferralService;
 use CannaRewards\Services\CDPService;
 use CannaRewards\Includes\EventBusInterface;
+use CannaRewards\Services\ConfigService; // <<<--- IMPORT
 use Exception;
 
 final class CreateUserCommandHandler {
@@ -13,22 +14,25 @@ final class CreateUserCommandHandler {
     private $cdp_service;
     private $referral_service;
     private EventBusInterface $eventBus;
+    private ConfigService $configService; // <<<--- ADD PROPERTY
 
     public function __construct(
         UserRepository $user_repository,
         CDPService $cdp_service,
         ReferralService $referral_service,
-        EventBusInterface $eventBus
+        EventBusInterface $eventBus,
+        ConfigService $configService // <<<--- INJECT
     ) {
         $this->user_repository = $user_repository;
         $this->cdp_service = $cdp_service;
         $this->referral_service = $referral_service;
         $this->eventBus = $eventBus;
+        $this->configService = $configService; // <<<--- ASSIGN
     }
 
     public function handle(CreateUserCommand $command): array {
-        // This is an acceptable global function call, as it's an application-level guard.
-        if (!get_option('users_can_register')) {
+        // <<<--- REFACTOR: Use the service
+        if (!$this->configService->canUsersRegister()) {
             throw new Exception('User registration is currently disabled.', 503);
         }
 
