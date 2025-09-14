@@ -1,6 +1,12 @@
 <?php
 namespace CannaRewards\Admin;
 
+// ARCHITECTURAL NOTE: This class exists within the Admin boundary.
+// Direct calls to WordPress functions (e.g., get_post_meta, add_meta_box)
+// are permitted here for pragmatic integration with the WordPress admin UI.
+// This contrasts with the core application logic in Services/Repositories,
+// which must remain pure.
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;

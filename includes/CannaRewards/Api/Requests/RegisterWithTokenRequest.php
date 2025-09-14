@@ -4,6 +4,7 @@ namespace CannaRewards\Api\Requests;
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -25,8 +26,11 @@ class RegisterWithTokenRequest extends FormRequest {
     public function to_command(): RegisterWithTokenCommand {
         $validated = $this->validated();
 
+        // REFACTOR: Get WordPressApiWrapper from the global container to pass to EmailAddress
+        $wp = \CannaRewards()->get(WordPressApiWrapper::class);
+
         return new RegisterWithTokenCommand(
-            new EmailAddress($validated['email']),
+            new EmailAddress($validated['email'], $wp),
             $validated['password'],
             $validated['firstName'],
             $validated['lastName'] ?? '',

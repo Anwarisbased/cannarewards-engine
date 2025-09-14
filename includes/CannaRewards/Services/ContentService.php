@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Infrastructure\WordPressApiWrapper;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -12,6 +14,11 @@ if ( ! defined( 'WPINC' ) ) {
  * Handles fetching and formatting of standard WordPress content like pages.
  */
 class ContentService {
+    private WordPressApiWrapper $wp;
+
+    public function __construct(WordPressApiWrapper $wp) {
+        $this->wp = $wp;
+    }
 
     /**
      * Retrieves a WordPress page by its slug and formats it for the API.
@@ -20,15 +27,15 @@ class ContentService {
      * @return array|null An array with page data or null if not found.
      */
     public function get_page_by_slug( string $slug ): ?array {
-        // Use the core WordPress function to find the page post object.
-        $page = get_page_by_path( $slug, OBJECT, 'page' );
+        // REFACTOR: Use the wrapper
+        $page = $this->wp->getPageByPath( $slug, OBJECT, 'page' );
 
         if ( ! $page ) {
             return null; // Return null if no page is found.
         }
 
-        // Apply 'the_content' filter to process shortcodes and other formatting.
-        $content = apply_filters( 'the_content', $page->post_content );
+        // REFACTOR: Use the wrapper
+        $content = $this->wp->applyFilters( 'the_content', $page->post_content );
         
         // Remove extra paragraphs that WordPress sometimes adds around content.
         $content = str_replace( ']]>', ']]&gt;', $content );

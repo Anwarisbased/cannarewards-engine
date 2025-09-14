@@ -38,7 +38,7 @@ final class UpdateProfileCommandHandler {
         $data = $command->data;
         $changed_fields = [];
 
-        $core_user_data = ['ID' => $user_id];
+        $core_user_data = [];
         if (isset($data['firstName'])) {
             $core_user_data['first_name'] = sanitize_text_field($data['firstName']);
             $changed_fields[] = 'firstName';
@@ -47,15 +47,17 @@ final class UpdateProfileCommandHandler {
             $core_user_data['last_name'] = sanitize_text_field($data['lastName']);
             $changed_fields[] = 'lastName';
         }
-        if (count($core_user_data) > 1) {
-            $result = wp_update_user($core_user_data);
+        if (count($core_user_data) > 0) {
+            // REFACTOR: Use the UserRepository instead of direct WordPress function
+            $result = $this->user_repository->updateUserData($user_id, $core_user_data);
             if (is_wp_error($result)) {
                 throw new Exception('Could not update user core data.');
             }
         }
 
         if (isset($data['phone_number'])) {
-            update_user_meta($user_id, 'phone_number', sanitize_text_field($data['phone_number']));
+            // REFACTOR: Use the UserRepository instead of direct WordPress function
+            $this->user_repository->updateUserMetaField($user_id, 'phone_number', sanitize_text_field($data['phone_number']));
             $changed_fields[] = 'phone_number';
         }
 
@@ -63,7 +65,8 @@ final class UpdateProfileCommandHandler {
             // In a full implementation, we'd fetch definitions from a CustomFieldRepository
             // to validate the keys and values before saving.
             foreach ($data['custom_fields'] as $key => $value) {
-                update_user_meta($user_id, sanitize_key($key), sanitize_text_field($value));
+                // REFACTOR: Use the UserRepository instead of direct WordPress function
+                $this->user_repository->updateUserMetaField($user_id, sanitize_key($key), sanitize_text_field($value));
                 $changed_fields[] = 'custom_' . sanitize_key($key);
             }
         }

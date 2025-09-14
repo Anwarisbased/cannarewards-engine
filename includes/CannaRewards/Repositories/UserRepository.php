@@ -167,4 +167,27 @@ class UserRepository {
         $this->wp->updateUserMeta( $user_id, 'billing_first_name', sanitize_text_field( $shipping_details['firstName'] ?? '' ) );
         $this->wp->updateUserMeta( $user_id, 'billing_last_name', sanitize_text_field( $shipping_details['lastName'] ?? '' ) );
     }
+    
+    /**
+     * Updates a user's core data (first name, last name, etc.).
+     * @param int $user_id The user ID
+     * @param array $data Associative array of user data to update
+     * @return int|\WP_Error The updated user's ID on success, or a WP_Error object on failure.
+     */
+    public function updateUserData(int $user_id, array $data) {
+        $data['ID'] = $user_id;
+        return $this->wp->updateUser($data);
+    }
+    
+    /**
+     * Updates a user meta field.
+     * @param int $user_id The user ID
+     * @param string $meta_key The meta key to update
+     * @param mixed $meta_value The meta value to set
+     * @param mixed $prev_value Optional. Previous value to check before updating.
+     * @return bool True on success, false on failure.
+     */
+    public function updateUserMetaField(int $user_id, string $meta_key, $meta_value, $prev_value = '') {
+        return $this->wp->updateUserMeta($user_id, $meta_key, $meta_value, $prev_value);
+    }
 }

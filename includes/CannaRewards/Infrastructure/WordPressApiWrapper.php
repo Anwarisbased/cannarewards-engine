@@ -65,6 +65,15 @@ final class WordPressApiWrapper {
         return wp_insert_user($userData);
     }
 
+    /**
+     * Wraps the global wp_update_user function.
+     * @param array $userData The user data array.
+     * @return int|\WP_Error The updated user's ID on success, or a WP_Error object on failure.
+     */
+    public function updateUser(array $userData): int|\WP_Error {
+        return wp_update_user($userData);
+    }
+
     // --- Post & Query Functions ---
 
     /** @return \WP_Post[] */
@@ -76,6 +85,11 @@ final class WordPressApiWrapper {
 
     public function getPageByPath(string $path, string $output = OBJECT, string $post_type = 'page'): ?\WP_Post {
         return get_page_by_path($path, $output, $post_type);
+    }
+
+    public function applyFilters(string $tag, string $value) {
+        // This wrapper is essential for making services that use filters testable.
+        return apply_filters($tag, $value);
     }
 
     // --- Options & Transients ---
@@ -193,5 +207,27 @@ final class WordPressApiWrapper {
     
     public function getPlaceholderImageSrc(): string {
         return wc_placeholder_img_src();
+    }
+    
+    // --- Additional WordPress Functions ---
+    
+    public function getTheTitle(int $postId): string {
+        return get_the_title($postId);
+    }
+    
+    public function getPost(int $postId): ?\WP_Post {
+        return get_post($postId);
+    }
+    
+    public function restDoRequest(\WP_REST_Request $request): \WP_REST_Response {
+        return rest_do_request($request);
+    }
+    
+    public function isWpError($thing): bool {
+        return is_wp_error($thing);
+    }
+    
+    public function homeUrl(): string {
+        return home_url();
     }
 }

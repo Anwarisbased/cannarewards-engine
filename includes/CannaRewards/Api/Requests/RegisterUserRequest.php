@@ -4,6 +4,7 @@ namespace CannaRewards\Api\Requests;
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -24,8 +25,11 @@ class RegisterUserRequest extends FormRequest {
     public function to_command(): CreateUserCommand {
         $validated = $this->validated();
 
+        // REFACTOR: Get WordPressApiWrapper from the global container to pass to EmailAddress
+        $wp = \CannaRewards()->get(WordPressApiWrapper::class);
+
         return new CreateUserCommand(
-            new EmailAddress($validated['email']),
+            new EmailAddress($validated['email'], $wp),
             $validated['password'],
             $validated['firstName'],
             $validated['lastName'] ?? '',

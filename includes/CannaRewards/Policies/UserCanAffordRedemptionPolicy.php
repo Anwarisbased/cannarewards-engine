@@ -4,15 +4,18 @@ namespace CannaRewards\Policies;
 use CannaRewards\Commands\RedeemRewardCommand;
 use CannaRewards\Repositories\ProductRepository;
 use CannaRewards\Repositories\UserRepository;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 use Exception;
 
 class UserCanAffordRedemptionPolicy implements PolicyInterface {
     private $product_repository;
     private $user_repository;
+    private $wp;
 
-    public function __construct(ProductRepository $product_repo, UserRepository $user_repo) {
+    public function __construct(ProductRepository $product_repo, UserRepository $user_repo, WordPressApiWrapper $wp) {
         $this->product_repository = $product_repo;
         $this->user_repository = $user_repo;
+        $this->wp = $wp;
     }
 
     public function check($command): void {
@@ -22,7 +25,7 @@ class UserCanAffordRedemptionPolicy implements PolicyInterface {
         }
         
         // Ignore free claims for the purpose of this policy.
-        $options = get_option('canna_rewards_options', []);
+        $options = $this->wp->getOption('canna_rewards_options', []);
         $welcome_reward_id = !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
         if ($command->product_id === $welcome_reward_id) {
             // A more robust check for first-scan might be needed, but for now this is fine.

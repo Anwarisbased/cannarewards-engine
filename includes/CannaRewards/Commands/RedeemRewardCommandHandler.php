@@ -8,6 +8,7 @@ use CannaRewards\Repositories\ActionLogRepository;
 use CannaRewards\Services\ActionLogService;
 use CannaRewards\Services\ContextBuilderService;
 use CannaRewards\Includes\EventBusInterface; // <<<--- IMPORT INTERFACE
+use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT WRAPPER
 use Exception;
 
 final class RedeemRewardCommandHandler {
@@ -18,6 +19,7 @@ final class RedeemRewardCommandHandler {
     private ActionLogService $logService;
     private ContextBuilderService $contextBuilder;
     private EventBusInterface $eventBus; // <<<--- ADD PROPERTY
+    private WordPressApiWrapper $wp; // <<<--- ADD WRAPPER PROPERTY
 
     public function __construct(
         ProductRepository $productRepo,
@@ -26,7 +28,8 @@ final class RedeemRewardCommandHandler {
         ActionLogService $logService,
         ContextBuilderService $contextBuilder,
         ActionLogRepository $logRepo,
-        EventBusInterface $eventBus // <<<--- ADD DEPENDENCY
+        EventBusInterface $eventBus, // <<<--- ADD DEPENDENCY
+        WordPressApiWrapper $wp // <<<--- ADD WRAPPER DEPENDENCY
     ) {
         $this->productRepo = $productRepo;
         $this->userRepo = $userRepo;
@@ -35,6 +38,7 @@ final class RedeemRewardCommandHandler {
         $this->contextBuilder = $contextBuilder;
         $this->logRepo = $logRepo;
         $this->eventBus = $eventBus; // <<<--- ASSIGN DEPENDENCY
+        $this->wp = $wp; // <<<--- ASSIGN WRAPPER
     }
 
     public function handle(RedeemRewardCommand $command): array {
@@ -51,11 +55,11 @@ final class RedeemRewardCommandHandler {
         $this->userRepo->saveShippingAddress($user_id, $command->shipping_details);
         $this->userRepo->savePointsAndRank($user_id, $new_balance, $this->userRepo->getLifetimePoints($user_id), $this->userRepo->getCurrentRankKey($user_id));
 
-        $product_name = get_the_title($product_id);
+        $product_name = $this->wp->getTheTitle($product_id);
         $log_meta_data = ['description' => 'Redeemed: ' . $product_name, 'points_change' => -$points_cost, 'new_balance' => $new_balance, 'order_id' => $order_id];
         $this->logService->record($user_id, 'redeem', $product_id, $log_meta_data);
         
-        $full_context = $this->contextBuilder->build_event_context($user_id, get_post($product_id));
+        $full_context = $this->contextBuilder->build_event_context($user_id, $this->wp->getPost($product_id));
         
         // REFACTOR: Use the injected event bus
         $this->eventBus->broadcast('reward_redeemed', $full_context);

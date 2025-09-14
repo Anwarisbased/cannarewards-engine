@@ -46,15 +46,13 @@ class AuthController {
         $email = $credentials['email'];
         $password = $credentials['password'];
 
-        $internal_request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
-        $internal_request->set_body_params(['username' => $email, 'password' => $password]);
-        $response = rest_do_request($internal_request);
-
-        if ( $response->is_error() ) {
+        try {
+            $login_data = $this->user_service->login($email, $password);
+            return new \WP_REST_Response($login_data, 200);
+        } catch (Exception $e) {
+            // The UserService::login method throws an exception on failure.
             return ApiResponse::forbidden('Invalid username or password.');
         }
-        
-        return new \WP_REST_Response( $response->get_data(), 200 );
     }
 
     public function request_password_reset(RequestPasswordResetRequest $request) {

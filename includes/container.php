@@ -63,11 +63,15 @@ $containerBuilder->addDefinitions([
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
 
     // --- EXPLICIT WIRING FOR SERVICES ---
-    Services\ContentService::class => create(Services\ContentService::class), // It has no dependencies
+    Services\ContentService::class => create(Services\ContentService::class)
+        ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
 
     // ... you might want a section for controllers ...
     \CannaRewards\Api\PageController::class => create(\CannaRewards\Api\PageController::class)
         ->constructor(get(Services\ContentService::class)),
+    
+    \CannaRewards\Api\AuthController::class => create(\CannaRewards\Api\AuthController::class)
+        ->constructor(get(Services\UserService::class)),
 
     Services\EconomyService::class => create(Services\EconomyService::class)
         ->constructor(
@@ -77,7 +81,8 @@ $containerBuilder->addDefinitions([
             get(Services\RankService::class),
             get(Services\ContextBuilderService::class),
             get(EventBusInterface::class),
-            get(Repositories\UserRepository::class)
+            get(Repositories\UserRepository::class),
+            get(Commands\GrantPointsCommandHandler::class)
         ),
     
     // FIXED: RankService only needs UserRepository and WordPressApiWrapper
@@ -93,7 +98,9 @@ $containerBuilder->addDefinitions([
             get('user_policy_map'),
             get(Services\RankService::class),
             get(Repositories\CustomFieldRepository::class),
-            get(Repositories\UserRepository::class)
+            get(Repositories\UserRepository::class),
+            get(Repositories\OrderRepository::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
         
     Services\ActionLogService::class => create(Services\ActionLogService::class)
@@ -160,6 +167,14 @@ $containerBuilder->addDefinitions([
             get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
         
+    // --- POLICIES ---
+    Policies\UserCanAffordRedemptionPolicy::class => create(Policies\UserCanAffordRedemptionPolicy::class)
+        ->constructor(
+            get(Repositories\ProductRepository::class),
+            get(Repositories\UserRepository::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
+        
     // --- COMMAND HANDLERS ---
     Commands\RegisterWithTokenCommandHandler::class => create(Commands\RegisterWithTokenCommandHandler::class)
         ->constructor(
@@ -202,7 +217,8 @@ $containerBuilder->addDefinitions([
             get(Services\ActionLogService::class),
             get(Services\ContextBuilderService::class),
             get(Repositories\ActionLogRepository::class),
-            get(EventBusInterface::class)
+            get(EventBusInterface::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
     
     CannaRewardsEngine::class => create(CannaRewardsEngine::class)

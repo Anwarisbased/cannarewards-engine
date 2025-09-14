@@ -7,6 +7,8 @@ use CannaRewards\DTO\SessionUserDTO;
 use CannaRewards\DTO\ShippingAddressDTO;
 use CannaRewards\Repositories\CustomFieldRepository;
 use CannaRewards\Repositories\UserRepository;
+use CannaRewards\Repositories\OrderRepository;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 use Exception;
 use Psr\Container\ContainerInterface;
 
@@ -20,8 +22,8 @@ final class UserService {
     private RankService $rankService;
     private CustomFieldRepository $customFieldRepo;
     private UserRepository $userRepo;
-    private ?Repositories\OrderRepository $orderRepo = null;
-    private ?Infrastructure\WordPressApiWrapper $wp = null;
+    private ?OrderRepository $orderRepo = null;
+    private ?WordPressApiWrapper $wp = null;
 
     public function __construct(
         ContainerInterface $container, // Keep container for lazy-loading handlers/policies
@@ -29,8 +31,8 @@ final class UserService {
         RankService $rankService,
         CustomFieldRepository $customFieldRepo,
         UserRepository $userRepo,
-        Repositories\OrderRepository $orderRepo = null,
-        Infrastructure\WordPressApiWrapper $wp = null
+        OrderRepository $orderRepo = null,
+        WordPressApiWrapper $wp = null
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
@@ -149,33 +151,33 @@ final class UserService {
     
     public function request_password_reset(string $email): void {
         // <<<--- REFACTOR: Use the wrapper for all checks and actions
-        if (!$this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->isEmail($email) || !$this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->emailExists($email)) {
+        if (!$this->wp->isEmail($email) || !$this->wp->emailExists($email)) {
             return;
         }
 
         $user = $this->userRepo->getUserCoreDataBy('email', $email);
-        $token = $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->getPasswordResetKey($user);
+        $token = $this->wp->getPasswordResetKey($user);
 
-        if (is_wp_error($token)) {
+        if ($this->wp->isWpError($token)) {
             error_log('Could not generate password reset token for ' . $email);
             return;
         }
         
         // This logic is okay, as ConfigService uses the wrapper
         $options = $this->container->get(\CannaRewards\Services\ConfigService::class)->get_app_config();
-        $base_url = !empty($options['settings']['brand_personality']['frontend_url']) ? rtrim($options['settings']['brand_personality']['frontend_url'], '/') : home_url();
+        $base_url = !empty($options['settings']['brand_personality']['frontend_url']) ? rtrim($options['settings']['brand_personality']['frontend_url'], '/') : $this->wp->homeUrl();
         $reset_link = "$base_url/reset-password?token=$token&email=" . rawurlencode($email);
 
-        $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->sendMail($email, 'Your Password Reset Request', "Click to reset: $reset_link");
+        $this->wp->sendMail($email, 'Your Password Reset Request', "Click to reset: $reset_link");
     }
 
     public function perform_password_reset(string $token, string $email, string $password): void {
         // <<<--- REFACTOR: Use the wrapper
-        $user = $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->checkPasswordResetKey($token, $email);
-        if (is_wp_error($user)) {
+        $user = $this->wp->checkPasswordResetKey($token, $email);
+        if ($this->wp->isWpError($user)) {
              throw new Exception('Your password reset token is invalid or has expired.', 400);
         }
-        $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->resetPassword($user, $password);
+        $this->wp->resetPassword($user, $password);
     }
     
     public function login(string $username, string $password): array {
@@ -185,7 +187,7 @@ final class UserService {
             'username' => $username,
             'password' => $password
         ]);
-        $response = rest_do_request($request);
+        $response = $this->wp->restDoRequest($request);
 
         if ($response->is_error()) {
             throw new Exception('Could not generate authentication token after registration.');

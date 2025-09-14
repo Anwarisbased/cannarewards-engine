@@ -1,6 +1,12 @@
 <?php
 namespace CannaRewards\Admin;
 
+// ARCHITECTURAL NOTE: This class exists within the Admin boundary.
+// Direct calls to WordPress functions (e.g., get_post_meta, add_meta_box)
+// are permitted here for pragmatic integration with the WordPress admin UI.
+// This contrasts with the core application logic in Services/Repositories,
+// which must remain pure.
+
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -79,7 +85,8 @@ class AdminMenu {
         if (!function_exists('wc_get_products')) { echo '<p>WooCommerce is not active.</p>'; return; }
         $options = self::get_wp_api()->getOption('canna_rewards_options');
         $value = $options[$args['id']] ?? '';
-        $products = wc_get_products(['status' => 'publish', 'limit' => -1]); // This is a pragmatic exception to the wrapper rule for simplicity
+        // REFACTOR: Use the wrapper. No exceptions.
+        $products = self::get_wp_api()->getProducts(['status' => 'publish', 'limit' => -1]);
         echo '<select id="' . esc_attr($args['id']) . '" name="canna_rewards_options[' . esc_attr($args['id']) . ']">';
         echo '<option value="">-- Select a Reward --</option>';
         foreach ($products as $product) {
@@ -101,7 +108,7 @@ class AdminMenu {
     public static function qr_generator_page_html() {
         if (!current_user_can('manage_options')) { return; }
         if (!function_exists('wc_get_products')) { echo '<div class="wrap"><h1>QR Code Generator</h1><p>WooCommerce must be active to use this feature.</p></div>'; return; }
-        $products = wc_get_products(['status' => 'publish', 'limit' => -1]);
+        $products = self::get_wp_api()->getProducts(['status' => 'publish', 'limit' => -1]);
         ?>
         <div class="wrap">
             <h1><?php echo esc_html(get_admin_page_title()); ?></h1>

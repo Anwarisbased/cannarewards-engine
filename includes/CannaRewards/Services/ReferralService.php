@@ -71,8 +71,8 @@ class ReferralService {
         }
 
         foreach ($triggers_to_run as $trigger_post) {
-            $action_type = get_post_meta($trigger_post->ID, 'action_type', true);
-            $action_value = get_post_meta($trigger_post->ID, 'action_value', true);
+            $action_type = $this->wp->getPostMeta($trigger_post->ID, 'action_type', true);
+            $action_value = $this->wp->getPostMeta($trigger_post->ID, 'action_value', true);
             
             if ($action_type === 'grant_points') {
                 $points_to_grant = (int) $action_value;

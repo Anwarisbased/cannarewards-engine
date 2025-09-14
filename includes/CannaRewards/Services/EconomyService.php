@@ -2,6 +2,7 @@
 namespace CannaRewards\Services;
 
 use CannaRewards\Commands\GrantPointsCommand;
+use CannaRewards\Commands\GrantPointsCommandHandler;
 use CannaRewards\Includes\EventBusInterface;
 use CannaRewards\Repositories\UserRepository;
 use Exception;
@@ -15,6 +16,7 @@ final class EconomyService {
     private ContextBuilderService $contextBuilder;
     private EventBusInterface $eventBus;
     private UserRepository $userRepository;
+    private GrantPointsCommandHandler $grantPointsHandler;
 
     public function __construct(
         ContainerInterface $container,
@@ -23,7 +25,8 @@ final class EconomyService {
         RankService $rankService,
         ContextBuilderService $contextBuilder,
         EventBusInterface $eventBus,
-        UserRepository $userRepository
+        UserRepository $userRepository,
+        GrantPointsCommandHandler $grantPointsHandler
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
@@ -32,11 +35,11 @@ final class EconomyService {
         $this->contextBuilder = $contextBuilder;
         $this->eventBus = $eventBus;
         $this->userRepository = $userRepository;
+        $this->grantPointsHandler = $grantPointsHandler;
 
+        // Register internal event listeners.
         $this->eventBus->listen('points_to_be_granted', [$this, 'handle_grant_points_event']);
         $this->eventBus->listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
-        
-        // The private registerCommandHandlers() method is no longer needed.
     }
 
     public function handle($command) {
@@ -69,7 +72,8 @@ final class EconomyService {
                 (int) $payload['points'],
                 (string) $payload['description']
             );
-            $this->handle($command);
+            // REFACTOR: Directly call the handler for a cleaner data flow.
+            $this->grantPointsHandler->handle($command);
         }
     }
     
