@@ -20,19 +20,25 @@ final class UserService {
     private RankService $rankService;
     private CustomFieldRepository $customFieldRepo;
     private UserRepository $userRepo;
+    private ?Repositories\OrderRepository $orderRepo = null;
+    private ?Infrastructure\WordPressApiWrapper $wp = null;
 
     public function __construct(
         ContainerInterface $container, // Keep container for lazy-loading handlers/policies
         array $policy_map,
         RankService $rankService,
         CustomFieldRepository $customFieldRepo,
-        UserRepository $userRepo
+        UserRepository $userRepo,
+        Repositories\OrderRepository $orderRepo = null,
+        Infrastructure\WordPressApiWrapper $wp = null
     ) {
         $this->container = $container;
         $this->policy_map = $policy_map;
         $this->rankService = $rankService;
         $this->customFieldRepo = $customFieldRepo;
         $this->userRepo = $userRepo;
+        $this->orderRepo = $orderRepo;
+        $this->wp = $wp;
         
         $this->registerCommandHandlers();
     }
@@ -170,5 +176,21 @@ final class UserService {
              throw new Exception('Your password reset token is invalid or has expired.', 400);
         }
         $this->container->get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)->resetPassword($user, $password);
+    }
+    
+    public function login(string $username, string $password): array {
+        // Use WordPress REST API to login
+        $request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
+        $request->set_body_params([
+            'username' => $username,
+            'password' => $password
+        ]);
+        $response = rest_do_request($request);
+
+        if ($response->is_error()) {
+            throw new Exception('Could not generate authentication token after registration.');
+        }
+
+        return $response->get_data();
     }
 }

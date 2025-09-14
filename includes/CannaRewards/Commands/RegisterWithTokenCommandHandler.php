@@ -3,22 +3,29 @@ namespace CannaRewards\Commands;
 
 use CannaRewards\Services\UserService;
 use CannaRewards\Services\EconomyService;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 use Exception;
 
 final class RegisterWithTokenCommandHandler {
     private UserService $userService;
     private EconomyService $economyService; // We still need this to dispatch the command
+    private WordPressApiWrapper $wp;
 
-    public function __construct(UserService $userService, EconomyService $economyService) {
+    public function __construct(
+        UserService $userService, 
+        EconomyService $economyService,
+        WordPressApiWrapper $wp
+    ) {
         $this->userService = $userService;
         $this->economyService = $economyService;
+        $this->wp = $wp;
     }
 
     /**
      * @throws Exception on failure
      */
     public function handle(RegisterWithTokenCommand $command): array {
-        $claim_code = get_transient('reg_token_' . $command->registration_token);
+        $claim_code = $this->wp->getTransient('reg_token_' . $command->registration_token);
         if (false === $claim_code) {
             throw new Exception('Invalid or expired registration token.', 403);
         }
@@ -48,20 +55,12 @@ final class RegisterWithTokenCommandHandler {
         $this->economyService->handle($process_scan_command);
 
         // 3. All successful, delete the token.
-        delete_transient('reg_token_' . $command->registration_token);
+        $this->wp->deleteTransient('reg_token_' . $command->registration_token);
         
         // 4. Log the user in.
-        $request = new \WP_REST_Request('POST', '/jwt-auth/v1/token');
-        $request->set_body_params([
-            'username' => (string) $command->email,
-            'password' => $command->password
-        ]);
-        $response = rest_do_request($request);
-
-        if ($response->is_error()) {
-            throw new Exception('Could not generate authentication token after registration.');
-        }
-
-        return $response->get_data();
+        return $this->userService->login(
+            (string) $command->email,
+            $command->password
+        );
     }
 }

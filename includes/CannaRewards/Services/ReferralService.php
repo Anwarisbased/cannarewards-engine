@@ -94,7 +94,7 @@ class ReferralService {
         $base_code_name = !empty($first_name) ? $first_name : 'USER';
         $base_code      = strtoupper(substr(preg_replace('/[^a-zA-Z0-9]/', '', $base_code_name), 0, 8));
         do {
-            $unique_part = strtoupper(wp_generate_password(4, false, false));
+            $unique_part = strtoupper($this->wp->generatePassword(4, false, false));
             $new_code    = $base_code . $unique_part;
             $exists = $this->user_repository->findUserIdByReferralCode($new_code);
         } while (!is_null($exists));

@@ -91,6 +91,10 @@ final class WordPressApiWrapper {
     public function setTransient(string $key, $value, int $expiration): void {
         set_transient($key, $value, $expiration);
     }
+    
+    public function deleteTransient(string $key): bool {
+        return delete_transient($key);
+    }
 
     // --- WooCommerce Functions ---
 

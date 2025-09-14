@@ -164,7 +164,8 @@ $containerBuilder->addDefinitions([
     Commands\RegisterWithTokenCommandHandler::class => create(Commands\RegisterWithTokenCommandHandler::class)
         ->constructor(
             get(Services\UserService::class),
-            get(Services\EconomyService::class)
+            get(Services\EconomyService::class),
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
         
     Commands\ProcessUnauthenticatedClaimCommandHandler::class => create(Commands\ProcessUnauthenticatedClaimCommandHandler::class)
