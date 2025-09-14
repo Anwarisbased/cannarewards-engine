@@ -59,6 +59,7 @@ final class UserService {
         $policies_for_command = $this->policy_map[$command_class] ?? [];
         foreach ($policies_for_command as $policy_class) {
             $policy = $this->container->get($policy_class);
+            // All policies now follow the standard interface
             $policy->check($command);
         }
 

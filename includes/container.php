@@ -18,6 +18,8 @@ if ( ! defined( 'WPINC' ) ) {
     die;
 }
 
+// Force container rebuild - 2023-10-01
+
 $containerBuilder = new ContainerBuilder();
 $containerBuilder->useAutowiring(true);
 
@@ -25,9 +27,12 @@ $containerBuilder->addDefinitions([
     // --- CONFIGURATION ARRAYS ---
     'economy_policy_map' => [
         Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class ],
+        Commands\ProcessProductScanCommand::class => [ Policies\RewardCodeIsValidPolicy::class, Policies\ScannedSkuExistsPolicy::class ],
+        Commands\ProcessUnauthenticatedClaimCommand::class => [ Policies\UnauthenticatedCodeIsValidPolicy::class ],
     ],
     'user_policy_map' => [
-        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class ],
+        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, Policies\RegistrationIsEnabledPolicy::class, Policies\UserAgreedToTermsPolicy::class ],
+        Commands\RegisterWithTokenCommand::class => [ Policies\RegistrationIsEnabledPolicy::class, Policies\UserAgreedToTermsPolicy::class ],
     ],
     'economy_command_map' => [
         Commands\GrantPointsCommand::class => Commands\GrantPointsCommandHandler::class,
@@ -187,6 +192,37 @@ $containerBuilder->addDefinitions([
             get(Repositories\ProductRepository::class),
             get(Repositories\UserRepository::class),
             get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
+        
+    Policies\RewardCodeIsValidPolicy::class => create(Policies\RewardCodeIsValidPolicy::class)
+        ->constructor(
+            get(Repositories\RewardCodeRepository::class)
+        ),
+        
+    Policies\ScannedSkuExistsPolicy::class => create(Policies\ScannedSkuExistsPolicy::class)
+        ->constructor(
+            get(Repositories\ProductRepository::class),
+            get(Repositories\RewardCodeRepository::class)
+        ),
+        
+    Policies\UnauthenticatedCodeIsValidPolicy::class => create(Policies\UnauthenticatedCodeIsValidPolicy::class)
+        ->constructor(
+            get(Repositories\RewardCodeRepository::class)
+        ),
+        
+    Policies\UserAccountIsUniquePolicy::class => create(Policies\UserAccountIsUniquePolicy::class)
+        ->constructor(
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
+        ),
+        
+    Policies\RegistrationIsEnabledPolicy::class => create(Policies\RegistrationIsEnabledPolicy::class)
+        ->constructor(
+            get(Services\ConfigService::class)
+        ),
+        
+    Policies\UserAgreedToTermsPolicy::class => create(Policies\UserAgreedToTermsPolicy::class)
+        ->constructor(
+            get(Services\ConfigService::class)
         ),
         
     // --- COMMAND HANDLERS ---

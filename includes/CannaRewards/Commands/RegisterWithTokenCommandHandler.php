@@ -4,6 +4,8 @@ namespace CannaRewards\Commands;
 use CannaRewards\Services\UserService;
 use CannaRewards\Services\EconomyService;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\RewardCode;
 use Exception;
 
 final class RegisterWithTokenCommandHandler {
@@ -51,7 +53,7 @@ final class RegisterWithTokenCommandHandler {
         // 2. Now that the user exists, dispatch the standard ProcessProductScanCommand.
         // This command is now simple and just broadcasts an event. Our new services will listen and
         // correctly identify it as a first scan.
-        $process_scan_command = new ProcessProductScanCommand($new_user_id, $claim_code);
+        $process_scan_command = new ProcessProductScanCommand(UserId::fromInt($new_user_id), RewardCode::fromString($claim_code));
         $this->economyService->handle($process_scan_command);
 
         // 3. All successful, delete the token.

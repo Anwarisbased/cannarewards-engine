@@ -57,8 +57,8 @@ try {
 
         case \CannaRewards\Commands\GrantPointsCommandHandler::class:
             $input_object = new \CannaRewards\Commands\GrantPointsCommand(
-                (int) ($input_data['user_id'] ?? 0),
-                (int) ($input_data['base_points'] ?? 0),
+                \CannaRewards\Domain\ValueObjects\UserId::fromInt((int) ($input_data['user_id'] ?? 0)),
+                \CannaRewards\Domain\ValueObjects\Points::fromInt((int) ($input_data['base_points'] ?? 0)),
                 (string) ($input_data['description'] ?? ''),
                 (float) ($input_data['temp_multiplier'] ?? 1.0)
             );

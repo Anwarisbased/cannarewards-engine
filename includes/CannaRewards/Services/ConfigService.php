@@ -41,6 +41,12 @@ class ConfigService {
         return (bool) $this->wp->getOption('users_can_register');
     }
 
+    public function areTermsAndConditionsEnabled(): bool {
+        // For now, return true to require terms and conditions
+        // This could be made configurable via WordPress options in the future
+        return true;
+    }
+
     /**
      * Assembles the complete application configuration object for the frontend.
      */
