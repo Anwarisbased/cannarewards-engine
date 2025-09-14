@@ -1,341 +1,47 @@
-Understood. Here is the first part of a highly prescriptive, verbose, and granular implementation plan designed to be executed by an agentic coding system.
-The overall goal of this two-part plan is to elevate the codebase from its current excellent state to one of world-class quality, consistency, and robustness by systematically eliminating all remaining architectural ambiguities and implementing advanced, scalable patterns.
-PART 1 of 2: Foundational Unification and Modernization
-This phase focuses on two critical areas: unifying the API routing layer into a single, authoritative source of truth, and completely modernizing the administrative interface to match the architectural rigor of the application's core.
-Phase 1: Unify the API Routing Layer
-Item 1.1: Consolidate Route Definitions into a Single Service Provider
-Intention: To eliminate ambiguity and establish a single, clear, and authoritative class responsible for all aspects of API route registration, adhering strictly to the Single Responsibility Principle.
-Explanation: The current implementation has split routing responsibilities between two classes: Api/Router.php (which hooks into WordPress) and Routing/RouteRegistrar.php (which contains a static array of route definitions). This separation is unnecessary and creates confusion. We will merge these responsibilities into a single, cleanly-named RouteServiceProvider class, making the routing system self-contained and easier to manage.
+Phase 1: Modernize the Administrative Interface
+Item 1.1: Refactor Admin Classes to be Object-Oriented Services
+Intention: To bring the architectural quality of the Admin/ directory up to the same exceptional standard as the rest of the application, making it fully testable, dependency-managed, and free of WordPress's procedural style.
+Explanation: Your application core is a masterpiece of modern, injectable, object-oriented design. In stark contrast, the Admin/ classes (AdminMenu, ProductMetabox, UserProfile) are still written in a legacy WordPress pattern, relying heavily on static methods and add_action calls from a static init() context. This makes them difficult to test and creates a jarring inconsistency in the codebase. We will refactor them into proper services that are instantiated by the DI container.
 Implementation:
-Step 1: Create the new RouteServiceProvider
-Action: Create a new file.
-Path: includes/CannaRewards/Api/RouteServiceProvider.php
-Content: This class will combine the logic from both Router and RouteRegistrar.
-code
-PHP
-<?php
-namespace CannaRewards\Api;
-
-use Psr\Container\ContainerInterface;
-use CannaRewards\Routing\RouteRegistrar; // We'll use this temporarily
-
-/**
- * The single source of truth for registering all API routes.
- */
-final class RouteServiceProvider {
-    private const API_NAMESPACE = 'rewards/v2';
-
-    public function __construct(private ContainerInterface $container) {}
-
-    /**
-     * Hooks the route registration into WordPress.
-     */
-    public function registerRoutes(): void {
-        add_action('rest_api_init', [$this, 'defineRoutes']);
-    }
-
-    /**
-     * Defines and registers all application routes with WordPress.
-     */
-    public function defineRoutes(): void {
-        $routes = $this->getRoutes();
-
-        foreach ($routes as $endpoint => $config) {
-            $method = $config['methods'];
-            $controllerClass = $config['controller'];
-            $callbackMethod = $config['method'];
-            $permission = $this->getPermissionCallback($config['permission'] ?? 'public');
-            $formRequestClass = $config['form_request'] ?? null;
-
-            register_rest_route(self::API_NAMESPACE, $endpoint, [
-                'methods' => $method,
-                'callback' => $this->createRouteCallback($controllerClass, $callbackMethod, $formRequestClass),
-                'permission_callback' => $permission
-            ]);
-        }
-    }
-
-    /**
-     * A factory that wraps controller callbacks to enable Form Request injection and centralized error handling.
-     */
-    private function createRouteCallback(string $controllerClass, string $methodName, ?string $formRequestClass = null): callable {
-        return function (\WP_REST_Request $request) use ($controllerClass, $methodName, $formRequestClass) {
-            try {
-                $controller = $this->container->get($controllerClass);
-                $args = [];
-
-                if ($formRequestClass) {
-                    $formRequest = new $formRequestClass($request);
-                    $args[] = $formRequest;
-                } else {
-                    $args[] = $request;
-                }
-                
-                $result = call_user_func_array([$controller, $methodName], $args);
-                
-                // NEW: Allow controllers to return Responder objects
-                if ($result instanceof \CannaRewards\Api\Responders\ResponderInterface) {
-                    return $result; // Pass the responder to the middleware
-                }
-                
-                // Fallback for controllers not yet using Responders
-                return $result;
-
-            } catch (\CannaRewards\Api\Exceptions\ValidationException $e) {
-                $error = new \WP_Error('validation_failed', $e->getMessage(), ['status' => 422, 'errors' => $e->getErrors()]);
-                return rest_ensure_response($error);
-            } catch (\Exception $e) {
-                $statusCode = $e->getCode() && is_int($e->getCode()) && $e->getCode() >= 400 ? $e->getCode() : 500;
-                $error = new \WP_Error('internal_error', $e->getMessage(), ['status' => $statusCode]);
-                return rest_ensure_response($error);
-            }
-        };
-    }
-    
-    /**
-     * Defines the array of all application routes.
-     * This logic is moved from the old RouteRegistrar.
-     */
-    private function getRoutes(): array {
-         return [
-            // Session routes
-            '/users/me/session' => [
-                'methods' => 'GET',
-                'controller' => \CannaRewards\Api\SessionController::class,
-                'method' => 'get_session_data',
-                'permission' => 'auth',
-            ],
-
-            // Authentication routes
-            '/auth/register' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\AuthController::class,
-                'method' => 'register_user',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\RegisterUserRequest::class,
-            ],
-            
-            '/auth/register-with-token' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\AuthController::class,
-                'method' => 'register_with_token',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\RegisterWithTokenRequest::class,
-            ],
-            
-            '/auth/login' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\AuthController::class,
-                'method' => 'login_user',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\LoginFormRequest::class,
-            ],
-            
-            '/auth/request-password-reset' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\AuthController::class,
-                'method' => 'request_password_reset',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\RequestPasswordResetRequest::class,
-            ],
-            
-            '/auth/perform-password-reset' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\AuthController::class,
-                'method' => 'perform_password_reset',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\PerformPasswordResetRequest::class,
-            ],
-
-            // Action routes
-            '/actions/claim' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\ClaimController::class,
-                'method' => 'process_claim',
-                'permission' => 'auth',
-                'form_request' => \CannaRewards\Api\Requests\ClaimRequest::class,
-            ],
-            
-            '/actions/redeem' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\RedeemController::class,
-                'method' => 'process_redemption',
-                'permission' => 'auth',
-                'form_request' => \CannaRewards\Api\Requests\RedeemRequest::class,
-            ],
-
-            // Unauthenticated routes
-            '/unauthenticated/claim' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\ClaimController::class,
-                'method' => 'process_unauthenticated_claim',
-                'permission' => 'public',
-                'form_request' => \CannaRewards\Api\Requests\UnauthenticatedClaimRequest::class,
-            ],
-
-            // User profile routes
-            '/users/me/profile' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\ProfileController::class,
-                'method' => 'update_profile',
-                'permission' => 'auth',
-                'form_request' => \CannaRewards\Api\Requests\UpdateProfileRequest::class,
-            ],
-
-            // Referral routes
-            '/users/me/referrals/nudge' => [
-                'methods' => 'POST',
-                'controller' => \CannaRewards\Api\ReferralController::class,
-                'method' => 'get_nudge_options',
-                'permission' => 'auth',
-                'form_request' => \CannaRewards\Api\Requests\NudgeReferralRequest::class,
-            ],
-
-            // Legacy routes
-            '/users/me/orders' => [
-                'methods' => 'GET',
-                'controller' => \CannaRewards\Api\OrdersController::class,
-                'method' => 'get_orders',
-                'permission' => 'auth',
-            ],
-        ];
-    }
-
-    /**
-     * Returns the correct permission callback for a given key.
-     */
-    private function getPermissionCallback(string $permission): callable {
-        switch ($permission) {
-            case 'auth':
-                return fn() => is_user_logged_in();
-            case 'admin':
-                return fn() => current_user_can('manage_options');
-            case 'public':
-            default:
-                return '__return_true';
-        }
-    }
-}
-Step 2: Update the DI Container
-Action: Modify.
-Path: includes/container.php
-Change: Replace the definition for the old Router with the new RouteServiceProvider.
-code
-PHP
-// --- BEFORE ---
-Router::class => create(Router::class)
-    ->constructor(get(ContainerInterface::class)),
-
-// --- AFTER ---
-\CannaRewards\Api\RouteServiceProvider::class => create(\CannaRewards\Api\RouteServiceProvider::class)
-    ->constructor(get(ContainerInterface::class)),
-Step 3: Update the Engine
-Action: Modify.
-Path: includes/CannaRewards/CannaRewardsEngine.php
-Change: Tell the engine to use the new RouteServiceProvider.
-code
-PHP
-// --- BEFORE ---
-// Get the router from the container and tell it to register the routes
-$router = $this->container->get(Router::class);
-$router->registerRoutes();
-
-// --- AFTER ---
-// Get the router from the container and tell it to register the routes
-$router = $this->container->get(\CannaRewards\Api\RouteServiceProvider::class);
-$router->registerRoutes();
-Step 4: Delete Obsolete Files
-Action: Delete File.
-Path: includes/CannaRewards/Api/Router.php
-Action: Delete Directory.
-Path: includes/CannaRewards/Routing/ (This contains RouteRegistrar.php)
-Phase 2: Modernize the Administrative Interface
-Item 2.1: Abstract Admin Field Generation with a FieldFactory
-Intention: To decouple the Admin UI classes from raw HTML generation, making them cleaner, more declarative, testable, and consistent with the object-oriented nature of the rest of the application.
-Explanation: Classes like AdminMenu and ProductMetabox currently echo and printf blocks of HTML. This is a fragile, procedural approach. We will create a FieldFactory service responsible for rendering these HTML fields. The admin classes will then call this factory, describing what they want to render, not how to render it. This also requires making the static-heavy admin classes into proper, instantiable objects.
-Implementation:
-Step 1: Create the FieldFactory service
+Step 1: Create a FieldFactory Service
 Action: Create a new file.
 Path: includes/CannaRewards/Admin/FieldFactory.php
+Purpose: This service will encapsulate all raw HTML generation for form fields, decoupling the admin classes from presentation.
 Content:
 code
 PHP
 <?php
 namespace CannaRewards\Admin;
 
-/**
- * A service responsible for rendering standard HTML form fields for the WordPress admin.
- */
 final class FieldFactory {
-    public function render_text_input(string $id, string $name, string $value, array $args = []): void {
-        $type = $args['type'] ?? 'text';
-        $class = $args['class'] ?? 'regular-text';
-        $placeholder = $args['placeholder'] ?? '';
-        $description = $args['description'] ?? '';
-
+    public function render_text_input(string $name, string $value, array $args = []): void {
         printf(
             '<input type="%s" id="%s" name="%s" value="%s" class="%s" placeholder="%s" />',
-            esc_attr($type),
-            esc_attr($id),
+            esc_attr($args['type'] ?? 'text'),
+            esc_attr($args['id'] ?? $name),
             esc_attr($name),
             esc_attr($value),
-            esc_attr($class),
-            esc_attr($placeholder)
+            esc_attr($args['class'] ?? 'regular-text'),
+            esc_attr($args['placeholder'] ?? '')
         );
-
-        if ($description) {
-            printf('<p class="description">%s</p>', esc_html($description));
+        if (!empty($args['description'])) {
+            printf('<p class="description">%s</p>', esc_html($args['description']));
         }
     }
-
-    public function render_select(string $id, string $name, string $current_value, array $options, array $args = []): void {
-        $description = $args['description'] ?? '';
-        $default_option = $args['default_option'] ?? '-- Select --';
-        
-        printf('<select id="%s" name="%s">', esc_attr($id), esc_attr($name));
-        if ($default_option) {
-            echo '<option value="">' . esc_html($default_option) . '</option>';
-        }
-
-        foreach ($options as $value => $label) {
-            printf(
-                '<option value="%s"%s>%s</option>',
-                esc_attr($value),
-                selected($current_value, $value, false),
-                esc_html($label)
-            );
-        }
-        echo '</select>';
-
-        if ($description) {
-            printf('<p class="description">%s</p>', esc_html($description));
-        }
-    }
+    // Add similar methods for `render_select`, `render_checkbox`, `render_textarea`
 }
-Step 2: Refactor AdminMenu to be a non-static, injectable class
-Action: Modify.
-Path: includes/CannaRewards/Admin/AdminMenu.php
-Change: Convert all static methods and properties to instance methods and properties. Inject dependencies (WordPressApiWrapper, FieldFactory) via the constructor.
+Step 2: Refactor AdminMenu into an Instantiable Service
+Action: Modify includes/CannaRewards/Admin/AdminMenu.php.
+Change: Convert all static methods to instance methods. Inject dependencies via the constructor. Let the init() method register the hooks.
 code
 PHP
-// --- BEFORE ---
-class AdminMenu {
-    const PARENT_SLUG = 'canna_rewards_settings';
-    private static ?WordPressApiWrapper $wp = null;
-    public static function init() { /* ... */ }
-    public static function add_admin_menu() { /* ... */ }
-    // ... all other methods are static ...
-}
-
-// --- AFTER ---
 <?php
 namespace CannaRewards\Admin;
 
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
-class AdminMenu {
-    const PARENT_SLUG = 'canna_rewards_settings';
-
+final class AdminMenu {
+    private const PARENT_SLUG = 'canna_rewards_settings';
     private WordPressApiWrapper $wp;
     private FieldFactory $fieldFactory;
 
@@ -347,110 +53,248 @@ class AdminMenu {
     public function init(): void {
         add_action('admin_menu', [$this, 'add_admin_menu']);
         add_action('admin_init', [$this, 'settings_init']);
-        add_action('admin_post_canna_generate_codes', [$this, 'handle_code_generation']);
     }
 
-    public function add_admin_menu() {
-        // Unchanged, but now uses $this
+    public function add_admin_menu(): void {
+        // ... logic ...
     }
 
-    public function settings_init() {
-        // All calls to `[self::class, '...']` become `[$this, '...']`
-        // ...
-        add_settings_field('frontend_url', 'PWA Frontend URL', [$this, 'field_html_callback'], /* ... */);
-        // ...
+    public function settings_init(): void {
+        // ... all register_setting and add_settings_field calls,
+        // but with callbacks pointing to `$this`, e.g., [$this, 'field_html_callback']
     }
     
-    // ... other methods converted to public instance methods ...
-
-    public function field_html_callback($args) {
+    public function field_html_callback(array $args): void {
         $options = $this->wp->getOption('canna_rewards_options');
         $value = $options[$args['id']] ?? '';
-        
-        // Delegate rendering to the factory
         $this->fieldFactory->render_text_input(
-            $args['id'],
             "canna_rewards_options[{$args['id']}]",
             $value,
-            [
-                'type' => $args['type'] ?? 'text',
-                'placeholder' => $args['placeholder'] ?? '',
-                'description' => $args['description'] ?? ''
-            ]
+            $args
         );
     }
-
-    public function field_select_product_callback($args) {
-        if (!function_exists('wc_get_products')) { echo '<p>WooCommerce is not active.</p>'; return; }
-        $options = $this->wp->getOption('canna_rewards_options');
-        $value = $options[$args['id']] ?? '';
-
-        $products = wc_get_products(['status' => 'publish', 'limit' => -1]);
-        $product_options = [];
-        foreach ($products as $product) {
-            $product_options[$product->get_id()] = $product->get_name();
-        }
-
-        // Delegate rendering to the factory
-        $this->fieldFactory->render_select(
-            $args['id'],
-            "canna_rewards_options[{$args['id']}]",
-            $value,
-            $product_options,
-            [
-                'description' => $args['description'],
-                'default_option' => '-- Select a Reward --'
-            ]
-        );
-    }
-
-    // ... handle_code_generation also becomes an instance method, getting the wrapper from $this->wp
-    public function handle_code_generation() {
-        // ...
-        $wp = $this->wp;
-        // ...
-    }
+    // ... convert all other methods from static to instance ...
 }
-Step 3: Update the DI Container for Admin Classes
-Action: Modify.
-Path: includes/container.php
-Change: Add definitions for the new FieldFactory and the refactored AdminMenu.
+Step 3: Repeat Refactoring for all Admin Classes
+Action: Apply the exact same refactoring pattern (remove static, inject dependencies, use init() to add hooks) to the following files:
+includes/CannaRewards/Admin/ProductMetabox.php
+includes/CannaRewards/Admin/UserProfile.php
+Note: Classes like AchievementMetabox are already instantiated with new, which is good. They should also be refactored to receive dependencies like FieldFactory via their constructor.
+Step 4: Update the DI Container and Engine
+Action: Modify includes/container.php.
+Change: Add definitions for all the newly refactored admin classes.
 code
 PHP
-// Add these definitions to your container
+// In container.php
 \CannaRewards\Admin\FieldFactory::class => create(),
-
-\CannaRewards\Admin\AdminMenu::class => create()
-    ->constructor(
-        get(\CannaRewards\Infrastructure\WordPressApiWrapper::class),
-        get(\CannaRewards\Admin\FieldFactory::class)
-    ),
-Step 4: Update the Engine to Instantiate Admin Classes
-Action: Modify.
-Path: includes/CannaRewards/CannaRewardsEngine.php
-Change: Instead of calling static init methods, get the admin class instances from the container and call their init methods.
+\CannaRewards\Admin\AdminMenu::class => autowire(),
+\CannaRewards\Admin\ProductMetabox::class => autowire(),
+\CannaRewards\Admin\UserProfile::class => autowire(),
+// ... etc for other admin classes ...
+Action: Modify includes/CannaRewards/CannaRewardsEngine.php.
+Change: In the init_wordpress_components method, get the admin services from the container and initialize them.
 code
 PHP
-// --- BEFORE ---
-private function init_wordpress_components() {
-    AdminMenu::init();
-    UserProfile::init();
-    ProductMetabox::init();
-    // ...
-}
-
-// --- AFTER ---
+// In CannaRewardsEngine.php
 private function init_wordpress_components() {
     $this->container->get(\CannaRewards\Admin\AdminMenu::class)->init();
-
-    // Note: You will need to apply the same non-static refactoring pattern
-    // to UserProfile and ProductMetabox for this to work fully.
-    // For now, let's assume they are also refactored.
-    $this->container->get(\CannaRewards\Admin\UserProfile::class)->init();
     $this->container->get(\CannaRewards\Admin\ProductMetabox::class)->init();
-
-    new AchievementMetabox(); // This was already an instance, so it's fine.
-    new CustomFieldMetabox();
-    new TriggerMetabox();
+    $this->container->get(\CannaRewards\Admin\UserProfile::class)->init();
+    
+    // These were already non-static, so just ensure they are in the container
+    $this->container->get(\CannaRewards\Admin\AchievementMetabox::class);
     // ...
 }
+Phase 2: Implement an Elite-Tier Authorization Layer
+Item 2.1: Create a Dedicated API Authorization Policy System
+Intention: To create a powerful, reusable, and explicit authorization system for the API, moving beyond simple capability checks and enabling complex business rules for endpoint access.
+Explanation: Your current permission system uses simple closures in the routing definition (fn() => is_user_logged_in()). This is fine but not scalable. What happens when you need a rule like "A user can only view their own orders"? A dedicated Authorization Policy system, similar to your Command Policies, makes these rules first-class citizens of your application.
+Implementation:
+Step 1: Create the Authorization Policy Interface and Base Classes
+Action: Create a new directory includes/CannaRewards/Api/Policies/.
+Action: Create new files within this directory.
+Path: includes/CannaRewards/Api/Policies/ApiPolicyInterface.php
+code
+PHP
+<?php
+namespace CannaRewards\Api\Policies;
+use WP_REST_Request;
+
+interface ApiPolicyInterface {
+    public function can(WP_REST_Request $request): bool;
+}
+Path: includes/CannaRewards/Api/Policies/CanViewOwnResourcePolicy.php
+code
+PHP
+<?php
+namespace CannaRewards\Api\Policies;
+use WP_REST_Request;
+
+class CanViewOwnResourcePolicy implements ApiPolicyInterface {
+    public function can(WP_REST_Request $request): bool {
+        $route_user_id = (int) $request->get_param('user_id');
+        $current_user_id = get_current_user_id();
+
+        if ($current_user_id === 0) {
+            return false; // Not logged in
+        }
+
+        // Admins can do anything
+        if (user_can($current_user_id, 'manage_options')) {
+            return true;
+        }
+
+        return $current_user_id === $route_user_id;
+    }
+}
+Step 2: Refactor the RouteServiceProvider to use Policies
+Action: Modify includes/CannaRewards/Api/RouteServiceProvider.php.
+Change: Update the routing array to reference policy classes and update the callback factory to resolve and execute them.
+code
+PHP
+// In RouteServiceProvider.php
+
+// Example change in getRoutes() array
+'/users/{user_id}/orders' => [ // Hypothetical new route
+    'methods' => 'GET',
+    'controller' => \CannaRewards\Api\OrdersController::class,
+    'method' => 'get_user_orders',
+    'permission' => \CannaRewards\Api\Policies\CanViewOwnResourcePolicy::class, // Reference the class
+],
+
+// Modify defineRoutes() to handle the policy class
+public function defineRoutes(): void {
+    // ... loop ...
+        $permissionCallback = $this->getPermissionCallback($config['permission'] ?? 'public');
+    // ...
+        'permission_callback' => $permissionCallback,
+    // ...
+}
+
+private function getPermissionCallback($permission): callable {
+    if (is_string($permission) && class_exists($permission)) {
+        // If it's a class name, return a closure that resolves and runs it
+        return function (\WP_REST_Request $request) use ($permission) {
+            /** @var ApiPolicyInterface $policy */
+            $policy = $this->container->get($permission);
+            return $policy->can($request);
+        };
+    }
+
+    // Fallback to the old key-based system
+    switch ($permission) {
+        case 'auth': return fn() => is_user_logged_in();
+        // ... etc ...
+    }
+}
+This provides a clean, powerful, and testable way to manage all API endpoint authorization logic.
+
+Final Phase: Elite-Tier Performance, Observability, and Developer Experience
+This phase addresses the last remaining areas for significant improvement: optimizing database performance with a more sophisticated caching strategy, formalizing observability with structured logging, and enhancing developer workflow by centralizing configuration.
+Item 1: Implement a Centralized, Cache-Aware SettingsRepository
+Intention: To create a single, authoritative, type-safe, and performant source of truth for all application settings, eliminating scattered get_option calls and providing a robust caching layer for configuration data.
+Evaluation: Currently, configuration is pulled directly from WordPress options within multiple services (ConfigService, UserService) and admin classes (AdminMenu). While the use of the WordPressApiWrapper is good, this approach has several drawbacks:
+Repetitive DB Calls: Each get_option('canna_rewards_options') call can result in a database query.
+No Type Safety: The return value is an array of mixed types, leading to frequent (int) casting and reliance on isset() checks. A typo in an option key (e.g., 'welcom_reward_product') is a runtime bug.
+Scattered Logic: Different services need to know the specific keys of the options array, coupling them to the database schema of the settings page.
+Prescriptive Implementation: We will create a SettingsRepository that fetches all options once per request, stores them in a strongly-typed SettingsDTO, and serves this DTO to the rest of the application.
+Step 1: Create the SettingsDTO
+Action: Create a new file.
+Path: includes/CannaRewards/DTO/SettingsDTO.php
+Content: This class is an immutable data contract for all application settings.
+code
+PHP
+<?php
+namespace CannaRewards\DTO;
+
+final class SettingsDTO {
+    public function __construct(
+        // General
+        public readonly string $frontendUrl,
+        public readonly string $supportEmail,
+        public readonly int $welcomeRewardProductId,
+        public readonly int $referralSignupGiftId,
+        public readonly string $referralBannerText,
+
+        // Personality
+        public readonly string $pointsName,
+        public readonly string $rankName,
+        public readonly string $welcomeHeaderText,
+        public readonly string $scanButtonCta
+        // Add theme settings if needed
+    ) {}
+}
+Step 2: Create the SettingsRepository
+Action: Create a new file.
+Path: includes/CannaRewards/Repositories/SettingsRepository.php
+Content: This repository is the sole gatekeeper to the canna_rewards_options data.
+code
+PHP
+<?php
+namespace CannaRewards\Repositories;
+
+use CannaRewards\DTO\SettingsDTO;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
+use CannaRewards\Domain\MetaKeys;
+
+final class SettingsRepository {
+    private ?SettingsDTO $settingsCache = null;
+
+    public function __construct(private WordPressApiWrapper $wp) {}
+
+    public function getSettings(): SettingsDTO {
+        if ($this->settingsCache !== null) {
+            return $this->settingsCache; // Return from in-request cache
+        }
+
+        $options = $this->wp->getOption(MetaKeys::MAIN_OPTIONS, []);
+        
+        $dto = new SettingsDTO(
+            frontendUrl: $options['frontend_url'] ?? home_url(),
+            supportEmail: $options['support_email'] ?? get_option('admin_email'),
+            welcomeRewardProductId: (int) ($options['welcome_reward_product'] ?? 0),
+            referralSignupGiftId: (int) ($options['referral_signup_gift'] ?? 0),
+            referralBannerText: $options['referral_banner_text'] ?? '',
+            pointsName: $options['points_name'] ?? 'Points',
+            rankName: $options['rank_name'] ?? 'Rank',
+            welcomeHeaderText: $options['welcome_header'] ?? 'Welcome, {firstName}',
+            scanButtonCta: $options['scan_cta'] ?? 'Scan Product'
+        );
+
+        $this->settingsCache = $dto; // Cache for the remainder of the request
+        return $dto;
+    }
+}
+Step 3: Refactor Services to Use the SettingsRepository
+Action: Modify any service that currently fetches options.
+Path: includes/CannaRewards/Services/ConfigService.php (and others like UserService).
+Change: Inject the SettingsRepository and use it to get the SettingsDTO.
+code
+PHP
+// In ConfigService constructor
+public function __construct(
+    private RankService $rankService,
+    private WordPressApiWrapper $wp,
+    private SettingsRepository $settingsRepo // Inject the new repo
+) {}
+
+// In getWelcomeRewardProductId method
+public function getWelcomeRewardProductId(): int {
+    return $this->settingsRepo->getSettings()->welcomeRewardProductId;
+}
+
+// In get_app_config method
+public function get_app_config(): array {
+    $settings = $this->settingsRepo->getSettings();
+    return [
+        'settings' => [
+            'brand_personality' => [
+                'points_name'    => $settings->pointsName,
+                'rank_name'      => $settings->rankName,
+                // ... etc, pull from the DTO
+            ],
+        ],
+        // ...
+    ];
+}
+Note: This change will propagate through any class that needs settings, creating a clean, single dependency and eliminating direct knowledge of the underlying WordPress option keys.

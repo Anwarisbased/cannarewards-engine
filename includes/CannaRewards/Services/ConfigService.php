@@ -1,8 +1,8 @@
 <?php
 namespace CannaRewards\Services;
 
-use CannaRewards\Domain\MetaKeys;
-use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
+use CannaRewards\Repositories\SettingsRepository;
+use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -16,32 +16,26 @@ if ( ! defined( 'WPINC' ) ) {
  */
 class ConfigService {
     private RankService $rankService;
-    private WordPressApiWrapper $wp; // <<<--- ADD WRAPPER PROPERTY
-    private array $options_cache = []; // Cache options for the request
+    private WordPressApiWrapper $wp;
+    private SettingsRepository $settingsRepo;
 
-    public function __construct(RankService $rankService, WordPressApiWrapper $wp) { // <<<--- INJECT WRAPPER
+    public function __construct(
+        RankService $rankService, 
+        WordPressApiWrapper $wp,
+        SettingsRepository $settingsRepo
+    ) {
         $this->rankService = $rankService;
         $this->wp = $wp;
+        $this->settingsRepo = $settingsRepo;
     }
 
-    private function get_options(): array {
-        if (empty($this->options_cache)) {
-            $this->options_cache = $this->wp->getOption(MetaKeys::MAIN_OPTIONS, []);
-        }
-        return $this->options_cache;
-    }
-
-    // <<< --- ADD NEW, SPECIFIC GETTER METHODS ---
     public function getWelcomeRewardProductId(): int {
-        $options = $this->get_options();
-        return !empty($options['welcome_reward_product']) ? (int) $options['welcome_reward_product'] : 0;
+        return $this->settingsRepo->getSettings()->welcomeRewardProductId;
     }
 
     public function getReferralSignupGiftId(): int {
-        $options = $this->get_options();
-        return !empty($options['referral_signup_gift']) ? (int) $options['referral_signup_gift'] : 0;
+        return $this->settingsRepo->getSettings()->referralSignupGiftId;
     }
-    // --- END NEW GETTERS ---
 
     public function canUsersRegister(): bool {
         return (bool) $this->wp->getOption('users_can_register');
@@ -51,30 +45,38 @@ class ConfigService {
      * Assembles the complete application configuration object for the frontend.
      */
     public function get_app_config(): array {
-        $options = $this->get_options();
+        $settings = $this->settingsRepo->getSettings();
         return [
             'settings'         => [
                 'brand_personality' => [
-                    'points_name'    => $options['points_name'] ?? 'Points',
-                    'rank_name'      => $options['rank_name'] ?? 'Rank',
-                    'welcome_header' => $options['welcome_header'] ?? 'Welcome, {firstName}',
-                    'scan_cta'       => $options['scan_cta'] ?? 'Scan Product',
+                    'points_name'    => $settings->pointsName,
+                    'rank_name'      => $settings->rankName,
+                    'welcome_header' => $settings->welcomeHeaderText,
+                    'scan_cta'       => $settings->scanButtonCta,
                 ],
                 'theme'             => [
-                    'primaryFont'        => $options['theme_primary_font'] ?? null,
-                    'radius'             => $options['theme_radius'] ?? null,
-                    'background'         => $options['theme_background'] ?? null,
-                    'foreground'         => $options['theme_foreground'] ?? null,
-                    'card'               => $options['theme_card'] ?? null,
-                    'primary'            => $options['theme_primary'] ?? null,
-                    'primary-foreground' => $options['theme_primary_foreground'] ?? null,
-                    'secondary'          => $options['theme_secondary'] ?? null,
-                    'destructive'        => $options['theme_destructive'] ?? null,
+                    'primaryFont'        => $this->get_options()['theme_primary_font'] ?? null,
+                    'radius'             => $this->get_options()['theme_radius'] ?? null,
+                    'background'         => $this->get_options()['theme_background'] ?? null,
+                    'foreground'         => $this->get_options()['theme_foreground'] ?? null,
+                    'card'               => $this->get_options()['theme_card'] ?? null,
+                    'primary'            => $this->get_options()['theme_primary'] ?? null,
+                    'primary-foreground' => $this->get_options()['theme_primary_foreground'] ?? null,
+                    'secondary'          => $this->get_options()['theme_secondary'] ?? null,
+                    'destructive'        => $this->get_options()['theme_destructive'] ?? null,
                 ],
             ],
             'all_ranks'        => $this->get_all_ranks(),
             'all_achievements' => $this->get_all_achievements(),
         ];
+    }
+
+    private function get_options(): array {
+        static $options_cache = [];
+        if (empty($options_cache)) {
+            $options_cache = $this->wp->getOption('canna_rewards_options', []);
+        }
+        return $options_cache;
     }
 
     private function get_all_ranks(): array {

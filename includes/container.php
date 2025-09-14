@@ -40,6 +40,16 @@ $containerBuilder->addDefinitions([
     EventBusInterface::class => autowire(WordPressEventBus::class),
     \CannaRewards\Infrastructure\WordPressApiWrapper::class => autowire(\CannaRewards\Infrastructure\WordPressApiWrapper::class),
 
+    // --- ADMIN CLASSES ---
+    \CannaRewards\Admin\FieldFactory::class => create(),
+    \CannaRewards\Admin\AdminMenu::class => autowire(),
+    \CannaRewards\Admin\ProductMetabox::class => autowire(),
+    \CannaRewards\Admin\UserProfile::class => autowire(),
+    
+    // --- API CLASSES ---
+    \CannaRewards\Api\Router::class => autowire(),
+    \CannaRewards\Api\Policies\CanViewOwnResourcePolicy::class => create(),
+
     // --- REPOSITORIES ---
     Repositories\UserRepository::class => create(Repositories\UserRepository::class)
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
@@ -60,6 +70,9 @@ $containerBuilder->addDefinitions([
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
         
     Repositories\AchievementRepository::class => create(Repositories\AchievementRepository::class)
+        ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
+        
+    Repositories\SettingsRepository::class => create(Repositories\SettingsRepository::class)
         ->constructor(get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)),
 
     // --- EXPLICIT WIRING FOR SERVICES ---
@@ -118,7 +131,8 @@ $containerBuilder->addDefinitions([
     Services\ConfigService::class => create(Services\ConfigService::class)
         ->constructor(
             get(Services\RankService::class),
-            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
+            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class),
+            get(Repositories\SettingsRepository::class)
         ),
         
     Services\StandardScanService::class => create(Services\StandardScanService::class)
