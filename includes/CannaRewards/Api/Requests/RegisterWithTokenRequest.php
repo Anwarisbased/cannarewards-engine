@@ -30,7 +30,7 @@ class RegisterWithTokenRequest extends FormRequest {
         $wp = \CannaRewards()->get(WordPressApiWrapper::class);
 
         return new RegisterWithTokenCommand(
-            new EmailAddress($validated['email'], $wp),
+            EmailAddress::fromString($validated['email'], $wp),
             $validated['password'],
             $validated['firstName'],
             $validated['lastName'] ?? '',

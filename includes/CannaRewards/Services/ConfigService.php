@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Domain\MetaKeys;
 use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
 
 // Exit if accessed directly.
@@ -25,7 +26,7 @@ class ConfigService {
 
     private function get_options(): array {
         if (empty($this->options_cache)) {
-            $this->options_cache = $this->wp->getOption('canna_rewards_options', []);
+            $this->options_cache = $this->wp->getOption(MetaKeys::MAIN_OPTIONS, []);
         }
         return $this->options_cache;
     }

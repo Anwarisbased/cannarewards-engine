@@ -52,18 +52,16 @@ class UnauthenticatedDataController {
         $product_id = $this->configService->getWelcomeRewardProductId();
         
         if ($product_id === 0) {
-            $error = new WP_Error('not_configured', 'The welcome reward has not been configured in Brand Settings.', ['status' => 404]);
-            return rest_ensure_response($error);
+            return ApiResponse::not_found('The welcome reward has not been configured in Brand Settings.');
         }
         
         $preview_data = $this->format_product_preview($product_id);
         
         if ( is_null($preview_data) ) {
-            $error = new WP_Error('not_found', 'Welcome reward product could not be found.', ['status' => 404]);
-            return rest_ensure_response($error);
+            return ApiResponse::not_found('Welcome reward product could not be found.');
         }
 
-        return new WP_REST_Response($preview_data, 200);
+        return ApiResponse::success($preview_data);
     }
 
     /**
@@ -74,19 +72,17 @@ class UnauthenticatedDataController {
         $product_id = $this->configService->getReferralSignupGiftId();
 
         if ($product_id === 0) {
-            $error = new WP_Error('not_configured', 'The referral gift has not been configured in Brand Settings.', ['status' => 404]);
-            return rest_ensure_response($error);
+            return ApiResponse::not_found('The referral gift has not been configured in Brand Settings.');
         }
 
         $preview_data = $this->format_product_preview($product_id);
 
         if ( is_null($preview_data) ) {
-            $error = new WP_Error('not_found', 'Referral gift product could not be found.', ['status' => 404]);
-            return rest_ensure_response($error);
+            return ApiResponse::not_found('Referral gift product could not be found.');
         }
         
         $preview_data['isReferralGift'] = true;
         
-        return new WP_REST_Response($preview_data, 200);
+        return ApiResponse::success($preview_data);
     }
 }

@@ -38,6 +38,7 @@ class AuthController {
         // Validation and data transformation is handled by the Form Request.
         $command = $request->to_command();
         $result = $this->user_service->handle($command);
+        // The result is already a properly formatted JWT response, so we don't need to wrap it
         return new \WP_REST_Response($result, 200);
     }
 
@@ -48,7 +49,7 @@ class AuthController {
 
         try {
             $login_data = $this->user_service->login($email, $password);
-            return new \WP_REST_Response($login_data, 200);
+            return ApiResponse::success($login_data);
         } catch (Exception $e) {
             // The UserService::login method throws an exception on failure.
             return ApiResponse::forbidden('Invalid username or password.');
@@ -57,12 +58,12 @@ class AuthController {
 
     public function request_password_reset(RequestPasswordResetRequest $request) {
         $this->user_service->request_password_reset($request->getEmail());
-        return new \WP_REST_Response(['success' => true, 'message' => 'If an account with that email exists, a reset link has been sent.'], 200);
+        return ApiResponse::success(['message' => 'If an account with that email exists, a reset link has been sent.']);
     }
 
     public function perform_password_reset(PerformPasswordResetRequest $request) {
         $data = $request->getResetData();
         $this->user_service->perform_password_reset($data['token'], $data['email'], $data['password']);
-        return new \WP_REST_Response(['success' => true, 'message' => 'Password has been reset successfully. You can now log in.'], 200);
+        return ApiResponse::success(['message' => 'Password has been reset successfully. You can now log in.']);
     }
 }

@@ -87,12 +87,13 @@ class OrderRepository {
                 }
             }
 
-            $dto = new OrderDTO();
-            $dto->orderId = $order->get_id();
-            $dto->date = $order->get_date_created()->date('Y-m-d');
-            $dto->status = ucfirst($order->get_status());
-            $dto->items = implode(', ', $item_names);
-            $dto->imageUrl = $image_url;
+            $dto = new OrderDTO(
+                orderId: $order->get_id(),
+                date: $order->get_date_created()->date('Y-m-d'),
+                status: ucfirst($order->get_status()),
+                items: implode(', ', $item_names),
+                imageUrl: $image_url
+            );
 
             $formatted_orders[] = $dto;
         }

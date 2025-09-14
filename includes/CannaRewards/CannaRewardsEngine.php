@@ -13,6 +13,7 @@ use CannaRewards\Includes\DB;
 use CannaRewards\Includes\Integrations;
 use CannaRewards\Api\Exceptions\ValidationException;
 use CannaRewards\Api\FormRequest;
+use CannaRewards\Api\Responders\ResponderInterface;
 use Psr\Container\ContainerInterface;
 
 final class CannaRewardsEngine {

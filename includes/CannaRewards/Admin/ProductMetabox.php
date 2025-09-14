@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Admin;
 
+use CannaRewards\Domain\MetaKeys;
+
 // ARCHITECTURAL NOTE: This class exists within the Admin boundary.
 // Direct calls to WordPress functions (e.g., get_post_meta, add_meta_box)
 // are permitted here for pragmatic integration with the WordPress admin UI.
@@ -36,9 +38,9 @@ class ProductMetabox {
     public static function render_metabox_html($post) {
         wp_nonce_field('canna_product_settings_save', 'canna_product_settings_nonce');
 
-        $points_award = get_post_meta($post->ID, 'points_award', true);
-        $points_cost = get_post_meta($post->ID, 'points_cost', true);
-        $required_rank_slug = get_post_meta($post->ID, '_required_rank', true);
+        $points_award = get_post_meta($post->ID, MetaKeys::POINTS_AWARD, true);
+        $points_cost = get_post_meta($post->ID, MetaKeys::POINTS_COST, true);
+        $required_rank_slug = get_post_meta($post->ID, MetaKeys::REQUIRED_RANK, true);
         $marketing_snippet = get_post_meta($post->ID, 'marketing_snippet', true);
 
         $ranks = get_posts([
@@ -103,9 +105,9 @@ class ProductMetabox {
         }
 
         $fields_to_save = [
-            'canna_points_award' => 'points_award',
-            'canna_points_cost' => 'points_cost',
-            'canna_required_rank' => '_required_rank',
+            'canna_points_award' => MetaKeys::POINTS_AWARD,
+            'canna_points_cost' => MetaKeys::POINTS_COST,
+            'canna_required_rank' => MetaKeys::REQUIRED_RANK,
             'canna_marketing_snippet' => 'marketing_snippet',
         ];
 

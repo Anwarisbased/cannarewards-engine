@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Repositories;
 
+use CannaRewards\Domain\MetaKeys;
 use CannaRewards\DTO\ShippingAddressDTO;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
@@ -75,28 +76,28 @@ class UserRepository {
     }
 
     public function getPointsBalance(int $user_id): int {
-        $balance = $this->wp->getUserMeta($user_id, '_canna_points_balance', true);
+        $balance = $this->wp->getUserMeta($user_id, MetaKeys::POINTS_BALANCE, true);
         return empty($balance) ? 0 : (int) $balance;
     }
 
     public function getLifetimePoints(int $user_id): int {
-        $lifetime_points = $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true);
+        $lifetime_points = $this->wp->getUserMeta($user_id, MetaKeys::LIFETIME_POINTS, true);
         return empty($lifetime_points) ? 0 : (int) $lifetime_points;
     }
 
     public function getCurrentRankKey(int $user_id): string {
-        $rank_key = $this->wp->getUserMeta($user_id, '_canna_current_rank_key', true);
+        $rank_key = $this->wp->getUserMeta($user_id, MetaKeys::CURRENT_RANK_KEY, true);
         return empty($rank_key) ? 'member' : $rank_key;
     }
     
     public function getReferralCode(int $user_id): ?string {
-        $code = $this->wp->getUserMeta($user_id, '_canna_referral_code', true);
+        $code = $this->wp->getUserMeta($user_id, MetaKeys::REFERRAL_CODE, true);
         return empty($code) ? null : $code;
     }
 
     public function findUserIdByReferralCode(string $referral_code): ?int {
         $users = $this->wp->findUsers([
-            'meta_key'   => '_canna_referral_code',
+            'meta_key'   => MetaKeys::REFERRAL_CODE,
             'meta_value' => sanitize_text_field($referral_code),
             'number'     => 1,
             'fields'     => 'ID',
@@ -105,7 +106,7 @@ class UserRepository {
     }
 
     public function getReferringUserId(int $user_id): ?int {
-        $referrer_id = $this->wp->getUserMeta($user_id, '_canna_referred_by_user_id', true);
+        $referrer_id = $this->wp->getUserMeta($user_id, MetaKeys::REFERRED_BY_USER_ID, true);
         return !empty($referrer_id) ? (int) $referrer_id : null;
     }
 
@@ -113,14 +114,14 @@ class UserRepository {
      * Gets the user's shipping address as a formatted DTO.
      */
     public function getShippingAddressDTO(int $user_id): ShippingAddressDTO {
-        $dto = new ShippingAddressDTO();
-        $dto->first_name = $this->wp->getUserMeta($user_id, 'shipping_first_name', true);
-        $dto->last_name = $this->wp->getUserMeta($user_id, 'shipping_last_name', true);
-        $dto->address_1 = $this->wp->getUserMeta($user_id, 'shipping_address_1', true);
-        $dto->city = $this->wp->getUserMeta($user_id, 'shipping_city', true);
-        $dto->state = $this->wp->getUserMeta($user_id, 'shipping_state', true);
-        $dto->postcode = $this->wp->getUserMeta($user_id, 'shipping_postcode', true);
-        return $dto;
+        return new ShippingAddressDTO(
+            first_name: $this->wp->getUserMeta($user_id, 'shipping_first_name', true),
+            last_name: $this->wp->getUserMeta($user_id, 'shipping_last_name', true),
+            address_1: $this->wp->getUserMeta($user_id, 'shipping_address_1', true),
+            city: $this->wp->getUserMeta($user_id, 'shipping_city', true),
+            state: $this->wp->getUserMeta($user_id, 'shipping_state', true),
+            postcode: $this->wp->getUserMeta($user_id, 'shipping_postcode', true)
+        );
     }
 
     /**
@@ -131,17 +132,17 @@ class UserRepository {
     }
 
     public function savePointsAndRank(int $user_id, int $new_balance, int $new_lifetime_points, string $new_rank_key): void {
-        $this->wp->updateUserMeta($user_id, '_canna_points_balance', $new_balance);
-        $this->wp->updateUserMeta($user_id, '_canna_lifetime_points', $new_lifetime_points);
-        $this->wp->updateUserMeta($user_id, '_canna_current_rank_key', $new_rank_key);
+        $this->wp->updateUserMeta($user_id, MetaKeys::POINTS_BALANCE, $new_balance);
+        $this->wp->updateUserMeta($user_id, MetaKeys::LIFETIME_POINTS, $new_lifetime_points);
+        $this->wp->updateUserMeta($user_id, MetaKeys::CURRENT_RANK_KEY, $new_rank_key);
     }
     
     public function saveReferralCode(int $user_id, string $code): void {
-        $this->wp->updateUserMeta($user_id, '_canna_referral_code', $code);
+        $this->wp->updateUserMeta($user_id, MetaKeys::REFERRAL_CODE, $code);
     }
     
     public function setReferredBy(int $new_user_id, int $referrer_user_id): void {
-        $this->wp->updateUserMeta($new_user_id, '_canna_referred_by_user_id', $referrer_user_id);
+        $this->wp->updateUserMeta($new_user_id, MetaKeys::REFERRED_BY_USER_ID, $referrer_user_id);
     }
     
     public function saveShippingAddress(int $user_id, array $shipping_details): void {

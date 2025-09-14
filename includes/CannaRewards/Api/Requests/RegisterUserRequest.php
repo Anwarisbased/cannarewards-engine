@@ -29,7 +29,7 @@ class RegisterUserRequest extends FormRequest {
         $wp = \CannaRewards()->get(WordPressApiWrapper::class);
 
         return new CreateUserCommand(
-            new EmailAddress($validated['email'], $wp),
+            EmailAddress::fromString($validated['email'], $wp),
             $validated['password'],
             $validated['firstName'],
             $validated['lastName'] ?? '',

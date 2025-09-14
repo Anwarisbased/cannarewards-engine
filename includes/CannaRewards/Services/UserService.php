@@ -80,18 +80,18 @@ final class UserService {
 
         $rank_dto = $this->rankService->getUserRank($user_id);
 
-        $session_dto = new SessionUserDTO();
-        $session_dto->id = $user_id;
-        $session_dto->firstName = $user_data->first_name;
-        $session_dto->lastName = $user_data->last_name;
-        $session_dto->email = $user_data->user_email;
-        $session_dto->points_balance = $this->userRepo->getPointsBalance($user_id);
-        $session_dto->rank = $rank_dto;
-        $session_dto->shipping = $this->userRepo->getShippingAddressArray($user_id);
-        $session_dto->referral_code = $this->userRepo->getReferralCode($user_id);
-        $session_dto->onboarding_quest_step = (int) $this->userRepo->getUserMeta($user_id, '_onboarding_quest_step', true) ?: 1;
-        // THIS IS THE FIX: Ensure it's an object, not an array.
-        $session_dto->feature_flags = new \stdClass();
+        $session_dto = new SessionUserDTO(
+            id: $user_id,
+            firstName: $user_data->first_name,
+            lastName: $user_data->last_name,
+            email: $user_data->user_email,
+            points_balance: $this->userRepo->getPointsBalance($user_id),
+            rank: $rank_dto,
+            shipping: $this->userRepo->getShippingAddressArray($user_id),
+            referral_code: $this->userRepo->getReferralCode($user_id),
+            onboarding_quest_step: (int) $this->userRepo->getUserMeta($user_id, '_onboarding_quest_step', true) ?: 1,
+            feature_flags: new \stdClass()
+        );
 
         return $session_dto;
     }
@@ -121,16 +121,17 @@ final class UserService {
         
         $shipping_dto = $this->userRepo->getShippingAddressDTO($user_id);
 
-        $profile_dto = new FullProfileDTO();
-        $profile_dto->lastName = $user_data->last_name;
-        $profile_dto->phone_number = $this->userRepo->getUserMeta($user_id, 'phone_number', true);
-        $profile_dto->referral_code = $this->userRepo->getReferralCode($user_id);
-        $profile_dto->shipping_address = $shipping_dto;
-        $profile_dto->unlocked_achievement_keys = []; // This should come from AchievementRepository
-        $profile_dto->custom_fields = (object) [
-            'definitions' => $custom_fields_definitions,
-            'values'      => (object) $custom_fields_values,
-        ];
+        $profile_dto = new FullProfileDTO(
+            lastName: $user_data->last_name,
+            phone_number: $this->userRepo->getUserMeta($user_id, 'phone_number', true),
+            referral_code: $this->userRepo->getReferralCode($user_id),
+            shipping_address: $shipping_dto,
+            unlocked_achievement_keys: [], // This should come from AchievementRepository
+            custom_fields: (object) [
+                'definitions' => $custom_fields_definitions,
+                'values'      => (object) $custom_fields_values,
+            ]
+        );
 
         return $profile_dto;
     }

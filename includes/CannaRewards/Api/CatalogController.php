@@ -5,6 +5,10 @@ use WP_REST_Request;
 use WP_REST_Response;
 use WP_Error;
 use Exception;
+use CannaRewards\Api\Responders\SuccessResponder;
+use CannaRewards\Api\Responders\ErrorResponder;
+use CannaRewards\Api\Responders\BadRequestResponder;
+use CannaRewards\Api\Responders\NotFoundResponder;
 use CannaRewards\Services\CatalogService;
 
 // Exit if accessed directly.
@@ -28,14 +32,14 @@ class CatalogController {
      * Fetches a list of all reward products.
      *
      * @param WP_REST_Request $request The incoming API request.
-     * @return WP_REST_Response|WP_Error The API response.
+     * @return SuccessResponder|ErrorResponder The API response.
      */
     public function get_products( WP_REST_Request $request ) {
         try {
             $products = $this->catalogService->get_all_reward_products();
-            return new WP_REST_Response( $products, 200 );
+            return new SuccessResponder($products);
         } catch (Exception $e) {
-            return new WP_Error( 'server_error', 'Failed to fetch products.', [ 'status' => 500 ] );
+            return new ErrorResponder('Failed to fetch products.', 'server_error', 500);
         }
     }
 
@@ -44,21 +48,21 @@ class CatalogController {
      * Fetches a single reward product and adds eligibility context for the current user.
      *
      * @param WP_REST_Request $request The incoming API request.
-     * @return WP_REST_Response|WP_Error The API response.
+     * @return SuccessResponder|BadRequestResponder|NotFoundResponder The API response.
      */
     public function get_product( WP_REST_Request $request ) {
         $product_id = (int) $request->get_param('id');
         if ( empty($product_id) ) {
-            return new WP_Error( 'bad_request', 'Product ID is required.', [ 'status' => 400 ] );
+            return new BadRequestResponder('Product ID is required.');
         }
 
         $user_id = get_current_user_id();
         $product_data = $this->catalogService->get_product_with_eligibility($product_id, $user_id);
 
         if (!$product_data) {
-            return new WP_Error( 'not_found', 'Product not found.', [ 'status' => 404 ] );
+            return new NotFoundResponder('Product not found.');
         }
         
-        return new WP_REST_Response( $product_data, 200 );
+        return new SuccessResponder($product_data);
     }
 }

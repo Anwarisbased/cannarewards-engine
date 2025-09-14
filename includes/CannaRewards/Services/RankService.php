@@ -65,19 +65,21 @@ final class RankService {
         $rankPosts = $this->wp->getPosts($args);
 
         foreach ($rankPosts as $post) {
-            $dto = new RankDTO();
-            $dto->key = $post->post_name;
-            $dto->name = $post->post_title;
-            $dto->points = (int) $this->wp->getPostMeta($post->ID, 'points_required', true);
-            $dto->point_multiplier = (float) $this->wp->getPostMeta($post->ID, 'point_multiplier', true) ?: 1.0;
+            $dto = new RankDTO(
+                key: $post->post_name,
+                name: $post->post_title,
+                points: (int) $this->wp->getPostMeta($post->ID, 'points_required', true),
+                point_multiplier: (float) $this->wp->getPostMeta($post->ID, 'point_multiplier', true) ?: 1.0
+            );
             $ranks[] = $dto;
         }
 
-        $memberRank = new RankDTO();
-        $memberRank->key = 'member';
-        $memberRank->name = 'Member';
-        $memberRank->points = 0;
-        $memberRank->point_multiplier = 1.0; // Members get a 1.0x multiplier
+        $memberRank = new RankDTO(
+            key: 'member',
+            name: 'Member',
+            points: 0,
+            point_multiplier: 1.0 // Members get a 1.0x multiplier
+        );
         $ranks[] = $memberRank;
 
         // Ensure ranks are unique and sorted correctly

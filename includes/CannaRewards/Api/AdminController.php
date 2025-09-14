@@ -46,8 +46,7 @@ class AdminController {
         $repo = \CannaRewards()->get(RewardCodeRepository::class);
         $generated_codes = $repo->generateCodes($request->get_sku(), $request->get_quantity());
 
-        return new WP_REST_Response([
-            'success' => true,
+        return ApiResponse::success([
             'message' => "{$request->get_quantity()} codes generated for SKU: {$request->get_sku()}",
             'codes' => $generated_codes
         ], 200);
@@ -60,6 +59,6 @@ class AdminController {
         /** @var ActionLogRepository $repo */
         $repo = \CannaRewards()->get(ActionLogRepository::class);
         $results = $repo->getRecentLogs(100);
-        return new WP_REST_Response($results, 200);
+        return ApiResponse::success($results);
     }
 }

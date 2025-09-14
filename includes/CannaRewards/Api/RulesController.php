@@ -16,6 +16,6 @@ final class RulesController {
      */
     public function get_conditions(): \WP_REST_Response {
         $conditions = $this->registry->getConditions();
-        return new \WP_REST_Response($conditions, 200);
+        return ApiResponse::success($conditions);
     }
 }

@@ -29,17 +29,17 @@ class PageController {
     public function get_page( WP_REST_Request $request ) {
         $slug = $request->get_param( 'slug' );
         if ( empty( $slug ) ) {
-            return new WP_Error( 'bad_request', 'Page slug is required.', [ 'status' => 400 ] );
+            return ApiResponse::bad_request('Page slug is required.');
         }
 
         try {
             $page_data = $this->content_service->get_page_by_slug( $slug );
             if ( is_null( $page_data ) ) {
-                return new WP_Error( 'not_found', 'The requested page could not be found.', [ 'status' => 404 ] );
+                return ApiResponse::not_found('The requested page could not be found.');
             }
-            return new WP_REST_Response( $page_data, 200 );
+            return ApiResponse::success($page_data);
         } catch ( Exception $e ) {
-            return new WP_Error( 'page_error', 'Could not retrieve page content.', [ 'status' => 500 ] );
+            return ApiResponse::error('Could not retrieve page content.', 'page_error', 500);
         }
     }
 }

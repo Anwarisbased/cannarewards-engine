@@ -53,7 +53,7 @@ try {
         }
         
         // Create command object
-        $email = new \CannaRewards\Domain\ValueObjects\EmailAddress($input_data['email']);
+        $email = \CannaRewards\Domain\ValueObjects\EmailAddress::fromString($input_data['email']);
         $command = new \CannaRewards\Commands\CreateUserCommand(
             $email,
             (string) (isset($input_data['password']) ? $input_data['password'] : ''),
