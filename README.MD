@@ -41,17 +41,84 @@ This is the headless WordPress backend for the CannaRewards D2C Intelligence Pla
 
 ## 🏗️ Architecture
 
-This project follows a service-oriented architecture to ensure a clean separation of concerns and maintainability.
+This project follows a modern service-oriented architecture with several advanced patterns:
 
--   **`/services`**: Contains all core business logic (e.g., `EconomyService`, `GamificationService`). These services are the "brains" of the operation.
--   **`/includes/api`**: Contains the lean REST API controllers. Their only job is to handle incoming requests, call the appropriate service, and format the response.
--   **`/admin`**: Contains the classes for building the WordPress admin UI (metaboxes, settings pages, etc.).
--   **Data Contracts:** The definitive API contract (`openapi.yaml`) and Data Taxonomy are maintained in the central "Living Blueprint" document.
+### Core Patterns
+- **Command Pattern**: Business operations are encapsulated in Commands and handled by dedicated CommandHandlers
+- **Event-Driven Architecture**: Services communicate through domain events for loose coupling
+- **Dependency Injection**: All dependencies are managed through a DI container
+- **Value Objects**: Domain concepts are represented as immutable value objects
+- **DTOs**: Data Transfer Objects for structured data exchange
 
-## 🧪 Running Linters
+### Directory Structure
+-   **`/commands`**: Contains Command DTOs and their handlers
+-   **`/services`**: Contains all core business logic services
+-   **`/domain`**: Contains Value Objects and domain-specific classes
+-   **`/dto`**: Contains Data Transfer Objects
+-   **`/repositories`**: Contains data access logic
+-   **`/includes/api`**: Contains the lean REST API controllers
+-   **`/admin`**: Contains the classes for building the WordPress admin UI
+-   **`/tests-api`**: Contains the comprehensive Playwright test suite
+
+### Data Contracts
+- The definitive API contract (`openapi.yaml`) and Data Taxonomy are maintained in the documentation
+- Formal schemas ensure data consistency across the system
+
+## 🧪 Testing
+
+The project includes a comprehensive test suite that can run 35+ tests in parallel with 12+ workers reliably.
+
+### Running Tests
+```bash
+# Run all tests with optimal parallelization
+npx playwright test --workers=12
+
+# Run tests with moderate parallelization for stability
+npx playwright test --workers=6
+
+# Run tests with single worker for maximum stability
+npx playwright test --workers=1
+
+# Run specific test files
+npx playwright test tests-api/01-user-lifecycle.spec.js
+```
+
+### Test Architecture
+- **Integration Test Runner**: Secure PHP endpoint for direct component testing
+- **Test Helpers**: Utility functions for test data management with unique identifiers
+- **Parallel Execution**: Tests can run concurrently without interference using complete data isolation
+- **Database Retry Logic**: Automatic retry mechanisms for transient database failures
+- **Comprehensive Coverage**: All core business logic paths are tested (35+ tests)
+- **Performance**: Full test suite runs in 2.9 minutes with parallelization (31% faster than sequential)
+
+For detailed testing information, see `TESTING.md` and `TESTING-SUMMARY.md`.
+
+## 📖 Documentation
+
+### Architecture Decision Records (ADRs)
+- `docs/ADR/` - Key architectural decisions and their rationale
+
+### Data Taxonomy
+- `docs/Data_taxonomy/` - Data models and taxonomies
+
+### API Documentation
+- `docs/openapi spec/` - OpenAPI specification
+
+### Testing Documentation
+- `TESTING.md` - Comprehensive test setup and execution guide
+- `TESTING-SUMMARY.md` - Current test status and results
+- `PARALLEL-TESTING-SOLUTION.md` - Solutions for parallel test execution
+
+## 🧹 Code Quality
 
 This project uses PHP_CodeSniffer with the WordPress Coding Standards to enforce code quality. This is run automatically on every commit via a Husky pre-commit hook.
 
 To run the linter manually:
 ```bash
 ./vendor/bin/phpcs
+```
+
+To automatically fix issues:
+```bash
+./vendor/bin/phpcbf
+```
