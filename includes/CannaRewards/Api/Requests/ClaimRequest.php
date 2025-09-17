@@ -3,11 +3,14 @@ namespace CannaRewards\Api\Requests;
 
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\ProcessProductScanCommand;
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\RewardCode;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
+
 
 class ClaimRequest extends FormRequest {
 
@@ -21,8 +24,8 @@ class ClaimRequest extends FormRequest {
         $validated = $this->validated();
 
         return new ProcessProductScanCommand(
-            $user_id,
-            $validated['code']
+            UserId::fromInt($user_id),
+            RewardCode::fromString($validated['code'])
         );
     }
 }

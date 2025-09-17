@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\Points;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -10,20 +13,20 @@ if ( ! defined( 'WPINC' ) ) {
  * Command DTO for granting points to a user.
  */
 final class GrantPointsCommand {
-    public int $user_id;
-    public int $base_points;
+    public UserId $userId;
+    public Points $basePoints;
     public string $description;
-    public float $temp_multiplier;
+    public float $tempMultiplier;
 
     public function __construct(
-        int $user_id,
-        int $base_points,
+        UserId $userId,
+        Points $basePoints,
         string $description,
-        float $temp_multiplier = 1.0
+        float $tempMultiplier = 1.0
     ) {
-        $this->user_id = $user_id;
-        $this->base_points = $base_points;
+        $this->userId = $userId;
+        $this->basePoints = $basePoints;
         $this->description = $description;
-        $this->temp_multiplier = $temp_multiplier;
+        $this->tempMultiplier = $tempMultiplier;
     }
 }

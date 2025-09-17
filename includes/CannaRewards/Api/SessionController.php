@@ -58,9 +58,32 @@ class SessionController {
         // <<<--- REFACTOR: Let the service figure out the user ID
         $session_dto = $this->userService->get_current_user_session_data();
 
-        // The DTO and any nested DTOs (like RankDTO) are recursively converted to an array/object structure
-        // to ensure they are properly serialized into JSON for the response.
-        $response_data = json_decode(json_encode($session_dto), true);
+        // Convert the DTO to an array, ensuring Value Objects are properly serialized
+        // Match the OpenAPI spec structure
+        $response_data = [
+            'id' => $session_dto->id->toInt(),
+            'firstName' => $session_dto->firstName,
+            'lastName' => $session_dto->lastName,
+            'email' => (string) $session_dto->email,
+            'points_balance' => $session_dto->pointsBalance->toInt(),
+            'rank' => [
+                'key' => (string) $session_dto->rank->key,
+                'name' => $session_dto->rank->name,
+                'points' => $session_dto->rank->pointsRequired->toInt(),
+                'point_multiplier' => $session_dto->rank->pointMultiplier
+            ],
+            'shipping' => $session_dto->shippingAddress ? [
+                'first_name' => $session_dto->shippingAddress->firstName,
+                'last_name' => $session_dto->shippingAddress->lastName,
+                'address_1' => $session_dto->shippingAddress->address1,
+                'city' => $session_dto->shippingAddress->city,
+                'state' => $session_dto->shippingAddress->state,
+                'postcode' => $session_dto->shippingAddress->postcode
+            ] : null,
+            'referral_code' => $session_dto->referralCode,
+            'onboarding_quest_step' => 0, // This would need to be fetched from user meta
+            'feature_flags' => $session_dto->featureFlags
+        ];
         
         // Ensure feature_flags is an object, not an array, to match the OpenAPI contract.
         if (isset($response_data['feature_flags']) && is_array($response_data['feature_flags']) && empty($response_data['feature_flags'])) {

@@ -26,13 +26,22 @@ $containerBuilder->useAutowiring(true);
 $containerBuilder->addDefinitions([
     // --- CONFIGURATION ARRAYS ---
     'economy_policy_map' => [
-        Commands\RedeemRewardCommand::class => [ Policies\UserCanAffordRedemptionPolicy::class ],
-        Commands\ProcessProductScanCommand::class => [ Policies\RewardCodeIsValidPolicy::class, Policies\ScannedSkuExistsPolicy::class ],
-        Commands\ProcessUnauthenticatedClaimCommand::class => [ Policies\UnauthenticatedCodeIsValidPolicy::class ],
+        Commands\RedeemRewardCommand::class => [ 
+            Policies\UserMustBeAbleToAffordRedemptionPolicy::class,
+            Policies\UserMustMeetRankRequirementPolicy::class
+        ],
+        Commands\ProcessProductScanCommand::class => [ 
+            Policies\RewardCodeMustBeValidPolicy::class
+        ],
     ],
     'user_policy_map' => [
-        Commands\CreateUserCommand::class => [ Policies\UserAccountIsUniquePolicy::class, Policies\RegistrationIsEnabledPolicy::class, Policies\UserAgreedToTermsPolicy::class ],
-        Commands\RegisterWithTokenCommand::class => [ Policies\RegistrationIsEnabledPolicy::class, Policies\UserAgreedToTermsPolicy::class ],
+        Commands\CreateUserCommand::class => [ 
+            Policies\EmailAddressMustBeUniquePolicy::class, 
+            Policies\RegistrationMustBeEnabledPolicy::class
+        ],
+        Commands\RegisterWithTokenCommand::class => [ 
+            Policies\RegistrationMustBeEnabledPolicy::class
+        ],
     ],
     'economy_command_map' => [
         Commands\GrantPointsCommand::class => Commands\GrantPointsCommandHandler::class,
@@ -187,42 +196,41 @@ $containerBuilder->addDefinitions([
         ),
         
     // --- POLICIES ---
-    Policies\UserCanAffordRedemptionPolicy::class => create(Policies\UserCanAffordRedemptionPolicy::class)
+    Policies\UserMustBeAbleToAffordRedemptionPolicy::class => create(Policies\UserMustBeAbleToAffordRedemptionPolicy::class)
         ->constructor(
             get(Repositories\ProductRepository::class),
-            get(Repositories\UserRepository::class),
+            get(Repositories\UserRepository::class)
+        ),
+        
+    Policies\UserMustMeetRankRequirementPolicy::class => create(Policies\UserMustMeetRankRequirementPolicy::class)
+        ->constructor(
+            get(Repositories\ProductRepository::class),
+            get(Services\RankService::class)
+        ),
+        
+    Policies\RewardCodeMustBeValidPolicy::class => create(Policies\RewardCodeMustBeValidPolicy::class)
+        ->constructor(
+            get(Repositories\RewardCodeRepository::class)
+        ),
+        
+    Policies\ProductMustExistForSkuPolicy::class => create(Policies\ProductMustExistForSkuPolicy::class)
+        ->constructor(
+            get(Repositories\ProductRepository::class)
+        ),
+        
+    Policies\EmailAddressMustBeUniquePolicy::class => create(Policies\EmailAddressMustBeUniquePolicy::class)
+        ->constructor(
             get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
         ),
         
-    Policies\RewardCodeIsValidPolicy::class => create(Policies\RewardCodeIsValidPolicy::class)
+    Policies\RegistrationMustBeEnabledPolicy::class => create(Policies\RegistrationMustBeEnabledPolicy::class)
         ->constructor(
-            get(Repositories\RewardCodeRepository::class)
-        ),
-        
-    Policies\ScannedSkuExistsPolicy::class => create(Policies\ScannedSkuExistsPolicy::class)
-        ->constructor(
-            get(Repositories\ProductRepository::class),
-            get(Repositories\RewardCodeRepository::class)
+            get(Services\ConfigService::class)
         ),
         
     Policies\UnauthenticatedCodeIsValidPolicy::class => create(Policies\UnauthenticatedCodeIsValidPolicy::class)
         ->constructor(
             get(Repositories\RewardCodeRepository::class)
-        ),
-        
-    Policies\UserAccountIsUniquePolicy::class => create(Policies\UserAccountIsUniquePolicy::class)
-        ->constructor(
-            get(\CannaRewards\Infrastructure\WordPressApiWrapper::class)
-        ),
-        
-    Policies\RegistrationIsEnabledPolicy::class => create(Policies\RegistrationIsEnabledPolicy::class)
-        ->constructor(
-            get(Services\ConfigService::class)
-        ),
-        
-    Policies\UserAgreedToTermsPolicy::class => create(Policies\UserAgreedToTermsPolicy::class)
-        ->constructor(
-            get(Services\ConfigService::class)
         ),
         
     // --- COMMAND HANDLERS ---

@@ -4,6 +4,10 @@
 
 This is the headless WordPress backend for the CannaRewards D2C Intelligence Platform. It is a custom plugin that provides all necessary API endpoints, a service-oriented business logic layer, and an administrative interface for managing the platform.
 
+## 🏰 Architecture
+
+This plugin implements a "Castle Wall" architectural approach that creates a fortress of type safety around the domain logic by pushing the responsibility of handling Value Objects down the stack. For more details, see [Castle Wall Architecture](docs/CASTLE-WALL-ARCHITECTURE.md).
+
 ## 📋 Prerequisites
 
 - A WordPress installation (developed with LocalWP).

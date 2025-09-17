@@ -88,7 +88,7 @@ class OrderRepository {
             }
 
             $dto = new OrderDTO(
-                orderId: $order->get_id(),
+                orderId: \CannaRewards\Domain\ValueObjects\OrderId::fromInt($order->get_id()),
                 date: $order->get_date_created()->date('Y-m-d'),
                 status: ucfirst($order->get_status()),
                 items: implode(', ', $item_names),

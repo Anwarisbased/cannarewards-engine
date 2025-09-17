@@ -18,8 +18,8 @@ class OrdersController {
 
         try {
             $order_dtos = $this->order_repository->getUserOrders($user_id, $limit);
-            // Cast each DTO in the array to an array for the final response.
-            $orders_data = array_map(fn($dto) => (array) $dto, $order_dtos);
+            // Convert each DTO to an array for the final response using json serialization
+            $orders_data = array_map(fn($dto) => json_decode(json_encode($dto), true), $order_dtos);
             return ApiResponse::success(['orders' => $orders_data]);
         } catch (Exception $e) {
             return ApiResponse::error('Could not retrieve user orders.', 'orders_error', 500);

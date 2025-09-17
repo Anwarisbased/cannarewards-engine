@@ -3,9 +3,10 @@ namespace CannaRewards\Domain\ValueObjects;
 
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 use InvalidArgumentException;
+use JsonSerializable;
 
 // A Value Object that guarantees it holds a validly formatted email string.
-final class EmailAddress {
+final class EmailAddress implements JsonSerializable {
     private function __construct(public readonly string $value) {} // private constructor with promoted property
 
     public static function fromString(string $email, ?WordPressApiWrapper $wp = null): self {
@@ -24,6 +25,10 @@ final class EmailAddress {
     }
 
     public function __toString(): string {
+        return $this->value;
+    }
+
+    public function jsonSerialize(): string {
         return $this->value;
     }
 }

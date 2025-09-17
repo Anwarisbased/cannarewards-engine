@@ -3,7 +3,10 @@ namespace CannaRewards\Services;
 
 use CannaRewards\Commands\GrantPointsCommand;
 use CannaRewards\Commands\GrantPointsCommandHandler;
+use CannaRewards\Domain\ValueObjects\UserId;
 use CannaRewards\Includes\EventBusInterface;
+use CannaRewards\Policies\AuthorizationPolicyInterface;
+use CannaRewards\Policies\ValidationPolicyInterface;
 use CannaRewards\Repositories\UserRepository;
 use Exception;
 use Psr\Container\ContainerInterface;
@@ -42,34 +45,69 @@ final class EconomyService {
         $this->eventBus->listen('user_points_granted', [$this, 'handleRankTransitionCheck']);
     }
 
+    // This map now declaratively defines all business rules for a command.
+    private function getPolicyMap(): array {
+        return [
+            \CannaRewards\Commands\ProcessProductScanCommand::class => [
+                'validation' => [
+                    // PolicyClass => function that extracts the VO from the command
+                    \CannaRewards\Policies\RewardCodeMustBeValidPolicy::class => fn($cmd) => $cmd->code,
+                ],
+                'authorization' => []
+            ],
+            \CannaRewards\Commands\ProcessUnauthenticatedClaimCommand::class => [
+                'validation' => [
+                    // PolicyClass => function that extracts the VO from the command
+                    \CannaRewards\Policies\UnauthenticatedCodeIsValidPolicy::class => fn($cmd) => $cmd->code,
+                ],
+                'authorization' => []
+            ],
+            \CannaRewards\Commands\RedeemRewardCommand::class => [
+                'validation' => [],
+                'authorization' => [
+                    \CannaRewards\Policies\UserMustBeAbleToAffordRedemptionPolicy::class,
+                    \CannaRewards\Policies\UserMustMeetRankRequirementPolicy::class,
+                ]
+            ],
+        ];
+    }
+    
     public function handle($command) {
-        $command_class = get_class($command);
+        $commandClass = get_class($command);
+        $policyMap = $this->getPolicyMap()[$commandClass] ?? [];
 
-        // --- REFACTORED LOGIC ---
-        // This policy logic remains the same, as policies are also configured via DI.
-        $policies = $this->policy_map[$command_class] ?? [];
-        foreach ($policies as $policy_class) {
-            $policy = $this->container->get($policy_class);
-            $policy->check($command);
+        // --- Run Validation Policies ---
+        foreach ($policyMap['validation'] ?? [] as $policyClass => $valueExtractor) {
+            /** @var ValidationPolicyInterface $policy */
+            $policy = $this->container->get($policyClass);
+            $valueToValidate = $valueExtractor($command);
+            $policy->check($valueToValidate);
+        }
+
+        // --- Run Authorization Policies ---
+        $userId = $command->userId; // Assuming userId is on the command
+        foreach ($policyMap['authorization'] ?? [] as $policyClass) {
+            /** @var AuthorizationPolicyInterface $policy */
+            $policy = $this->container->get($policyClass);
+            $policy->check($userId, $command);
         }
 
         // The service now uses the injected map to find the correct handler.
         // It no longer has internal knowledge of which handlers exist.
-        if (!isset($this->command_map[$command_class])) {
-            throw new Exception("No economy handler registered for command: {$command_class}");
+        if (!isset($this->command_map[$commandClass])) {
+            throw new Exception("No economy handler registered for command: {$commandClass}");
         }
         
-        $handler_class = $this->command_map[$command_class];
+        $handler_class = $this->command_map[$commandClass];
         $handler = $this->container->get($handler_class); // Use container to build the handler
         return $handler->handle($command);
-        // --- END REFACTORED LOGIC ---
     }
     
     public function handle_grant_points_event(array $payload) {
         if (isset($payload['user_id'], $payload['points'], $payload['description'])) {
             $command = new GrantPointsCommand(
-                (int) $payload['user_id'],
-                (int) $payload['points'],
+                UserId::fromInt((int) $payload['user_id']),
+                \CannaRewards\Domain\ValueObjects\Points::fromInt((int) $payload['points']),
                 (string) $payload['description']
             );
             // REFACTOR: Directly call the handler for a cleaner data flow.
@@ -81,15 +119,19 @@ final class EconomyService {
         $user_id = $payload['user_id'] ?? 0;
         if ($user_id <= 0) return;
 
-        $current_rank_key = $this->userRepository->getCurrentRankKey($user_id);
-        $new_rank_dto = $this->rankService->getUserRank($user_id);
+        $userIdVO = UserId::fromInt($user_id);
+        $current_rank_key = $this->userRepository->getCurrentRankKey($userIdVO);
+        $new_rank_dto = $this->rankService->getUserRank($userIdVO);
 
-        if ($new_rank_dto->key !== $current_rank_key) {
+        error_log("Rank transition check: user_id=$user_id, current_rank=$current_rank_key, new_rank=" . (string)$new_rank_dto->key . ", points_required=" . $new_rank_dto->pointsRequired->toInt());
+
+        if ((string)$new_rank_dto->key !== $current_rank_key) {
+            error_log("Rank transition: Updating user $user_id from $current_rank_key to " . (string)$new_rank_dto->key);
             $this->userRepository->savePointsAndRank(
-                $user_id,
-                $this->userRepository->getPointsBalance($user_id),
-                $this->userRepository->getLifetimePoints($user_id),
-                $new_rank_dto->key
+                $userIdVO,
+                $this->userRepository->getPointsBalance($userIdVO),
+                $this->userRepository->getLifetimePoints($userIdVO),
+                (string)$new_rank_dto->key
             );
             
             $context = $this->contextBuilder->build_event_context($user_id);

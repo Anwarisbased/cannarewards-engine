@@ -1,12 +1,12 @@
 <?php
 namespace CannaRewards\Policies;
 
-use CannaRewards\Repositories\RewardCodeRepository;
 use CannaRewards\Domain\ValueObjects\RewardCode;
+use CannaRewards\Repositories\RewardCodeRepository;
 use CannaRewards\Commands\ProcessUnauthenticatedClaimCommand;
 use Exception;
 
-final class UnauthenticatedCodeIsValidPolicy implements PolicyInterface {
+final class UnauthenticatedCodeIsValidPolicy implements ValidationPolicyInterface {
     private RewardCodeRepository $rewardCodeRepository;
     
     public function __construct(RewardCodeRepository $rewardCodeRepository) {
@@ -16,20 +16,14 @@ final class UnauthenticatedCodeIsValidPolicy implements PolicyInterface {
     /**
      * @throws Exception When reward code is invalid or already used
      */
-    public function check($command): void {
-        // Extract the reward code from the command
-        $rewardCode = null;
-        if ($command instanceof ProcessUnauthenticatedClaimCommand) {
-            $rewardCode = $command->code;
+    public function check($value): void {
+        if (!$value instanceof RewardCode) {
+            throw new \InvalidArgumentException('This policy requires a RewardCode object.');
         }
         
-        if ($rewardCode === null) {
-            throw new Exception("Invalid command or reward code not found.");
-        }
-        
-        $validCode = $this->rewardCodeRepository->findValidCode($rewardCode->toString());
+        $validCode = $this->rewardCodeRepository->findValidCode($value);
         if ($validCode === null) {
-            throw new Exception("The reward code {$rewardCode} is invalid or has already been used.");
+            throw new Exception("The reward code {$value} is invalid or has already been used.");
         }
     }
 }

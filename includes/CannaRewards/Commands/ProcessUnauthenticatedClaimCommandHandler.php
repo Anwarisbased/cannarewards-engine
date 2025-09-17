@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\Sku;
 use CannaRewards\Repositories\RewardCodeRepository;
 use CannaRewards\Repositories\ProductRepository;
 use CannaRewards\Services\ConfigService; // <<<--- IMPORT THE SERVICE
@@ -31,14 +32,14 @@ final class ProcessUnauthenticatedClaimCommandHandler {
             throw new Exception('This code is invalid or has already been used.');
         }
 
-        $product_id = $this->product_repository->findIdBySku($code_data->sku);
+        $product_id = $this->product_repository->findIdBySku(Sku::fromString($code_data->sku));
         if (!$product_id) {
             throw new Exception('The product associated with this code could not be found.');
         }
 
         $registration_token = bin2hex(random_bytes(32));
         // REFACTOR: Use the wrapper to set the transient
-        $this->wp->setTransient('reg_token_' . $registration_token, $command->code, 15 * MINUTE_IN_SECONDS);
+        $this->wp->setTransient('reg_token_' . $registration_token, (string)$command->code, 15 * MINUTE_IN_SECONDS);
         
         // REFACTOR: Use the injected ConfigService
         $welcome_reward_id = $this->configService->getWelcomeRewardProductId();

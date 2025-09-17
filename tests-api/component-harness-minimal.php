@@ -52,17 +52,30 @@ try {
             include_once $plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/EmailAddress.php';
         }
         
+        if (file_exists($plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/PlainTextPassword.php')) {
+            include_once $plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/PlainTextPassword.php';
+        }
+        
+        if (file_exists($plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/PhoneNumber.php')) {
+            include_once $plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/PhoneNumber.php';
+        }
+        
+        if (file_exists($plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/ReferralCode.php')) {
+            include_once $plugin_dir . '/includes/CannaRewards/Domain/ValueObjects/ReferralCode.php';
+        }
+        
         // Create command object
         $email = \CannaRewards\Domain\ValueObjects\EmailAddress::fromString($input_data['email']);
+        $password = \CannaRewards\Domain\ValueObjects\PlainTextPassword::fromString($input_data['password']);
         $command = new \CannaRewards\Commands\CreateUserCommand(
             $email,
-            (string) (isset($input_data['password']) ? $input_data['password'] : ''),
+            $password,
             (string) (isset($input_data['firstName']) ? $input_data['firstName'] : ''),
             (string) (isset($input_data['lastName']) ? $input_data['lastName'] : ''),
-            (string) (isset($input_data['phone']) ? $input_data['phone'] : ''),
+            isset($input_data['phone']) ? \CannaRewards\Domain\ValueObjects\PhoneNumber::fromString($input_data['phone']) : null,
             (bool) (isset($input_data['agreedToTerms']) ? $input_data['agreedToTerms'] : false),
             (bool) (isset($input_data['agreedToMarketing']) ? $input_data['agreedToMarketing'] : false),
-            isset($input_data['referralCode']) ? $input_data['referralCode'] : null
+            isset($input_data['referralCode']) ? \CannaRewards\Domain\ValueObjects\ReferralCode::fromString($input_data['referralCode']) : null
         );
         
         // Execute and get result

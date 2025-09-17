@@ -2,6 +2,8 @@
 namespace CannaRewards\Repositories;
 
 use CannaRewards\Domain\MetaKeys;
+use CannaRewards\Domain\ValueObjects\ProductId;
+use CannaRewards\Domain\ValueObjects\Sku;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -20,21 +22,21 @@ class ProductRepository {
         $this->wp = $wp;
     }
 
-    public function findIdBySku(string $sku): ?int {
-        $product_id = $this->wp->getProductIdBySku($sku);
-        return $product_id > 0 ? $product_id : null;
+    public function findIdBySku(Sku $sku): ?ProductId {
+        $product_id = $this->wp->getProductIdBySku($sku->value);
+        return $product_id > 0 ? ProductId::fromInt($product_id) : null;
     }
 
-    public function getPointsAward(int $product_id): int {
-        return (int) $this->wp->getPostMeta($product_id, MetaKeys::POINTS_AWARD, true);
+    public function getPointsAward(ProductId $product_id): int {
+        return (int) $this->wp->getPostMeta($product_id->toInt(), MetaKeys::POINTS_AWARD, true);
     }
 
-    public function getPointsCost(int $product_id): int {
-        return (int) $this->wp->getPostMeta($product_id, MetaKeys::POINTS_COST, true);
+    public function getPointsCost(ProductId $product_id): int {
+        return (int) $this->wp->getPostMeta($product_id->toInt(), MetaKeys::POINTS_COST, true);
     }
     
-    public function getRequiredRank(int $product_id): ?string {
-        $rank = $this->wp->getPostMeta($product_id, MetaKeys::REQUIRED_RANK, true);
+    public function getRequiredRank(ProductId $product_id): ?string {
+        $rank = $this->wp->getPostMeta($product_id->toInt(), MetaKeys::REQUIRED_RANK, true);
         return empty($rank) ? null : $rank;
     }
 }

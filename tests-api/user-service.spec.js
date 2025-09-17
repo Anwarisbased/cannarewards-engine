@@ -1,19 +1,23 @@
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 test.describe('Component Test: UserService Data Fetching', () => {
 
+  let testUserEmail;
   const testUser = {
-    email: `userservice_test_${Date.now()}@example.com`,
     id: 0,
     password: 'test-password-123'
   };
 
   // Before all tests, create a dedicated user.
   test.beforeAll(async ({ request }) => {
+    testUserEmail = generateUniqueEmail('userservice_test');
+    testUser.email = testUserEmail;
+    
     // Clean up any previous failed runs
     await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
-      form: { action: 'delete_user_by_email', email: testUser.email }
+      form: { action: 'delete_user_by_email', email: testUserEmail }
     });
 
     // Register the new user

@@ -25,7 +25,14 @@ class RedeemController {
         try {
             $command = $request->to_command($user_id);
             $result = $this->economy_service->handle($command);
-            return ApiResponse::success($result);
+            
+            // Convert the RedeemRewardResultDTO to an array with proper serialization
+            $response_data = [
+                'order_id' => $result->orderId->toInt(),
+                'new_points_balance' => $result->newPointsBalance->toInt()
+            ];
+            
+            return ApiResponse::success($response_data);
         } catch ( Exception $e ) {
             $status_code = 400; // Default
             if ($e->getCode() === 1) $status_code = 402; // Insufficient points

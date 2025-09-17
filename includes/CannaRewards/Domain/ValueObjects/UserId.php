@@ -14,7 +14,23 @@ final class UserId {
         $this->value = $id;
     }
 
+    public static function fromInt(int $id): self {
+        return new self($id);
+    }
+
     public function toInt(): int {
         return $this->value;
+    }
+
+    public function __serialize(): array {
+        return ['value' => $this->value];
+    }
+
+    public function jsonSerialize(): int {
+        return $this->value;
+    }
+
+    public function __toString(): string {
+        return (string) $this->value;
     }
 }

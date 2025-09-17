@@ -3,11 +3,13 @@ namespace CannaRewards\Api\Requests;
 
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\ProcessUnauthenticatedClaimCommand;
+use CannaRewards\Domain\ValueObjects\RewardCode;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
+
 
 class UnauthenticatedClaimRequest extends FormRequest {
 
@@ -21,7 +23,7 @@ class UnauthenticatedClaimRequest extends FormRequest {
         $validated = $this->validated();
 
         return new ProcessUnauthenticatedClaimCommand(
-            $validated['code']
+            RewardCode::fromString($validated['code'])
         );
     }
 }

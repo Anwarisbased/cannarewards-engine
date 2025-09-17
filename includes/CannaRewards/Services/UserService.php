@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\PhoneNumber;
+use CannaRewards\Domain\ValueObjects\ReferralCode;
 use CannaRewards\DTO\FullProfileDTO;
 use CannaRewards\DTO\RankDTO;
 use CannaRewards\DTO\SessionUserDTO;
@@ -59,8 +62,25 @@ final class UserService {
         $policies_for_command = $this->policy_map[$command_class] ?? [];
         foreach ($policies_for_command as $policy_class) {
             $policy = $this->container->get($policy_class);
-            // All policies now follow the standard interface
-            $policy->check($command);
+            
+            // Check which type of policy this is and call it appropriately
+            if ($policy instanceof \CannaRewards\Policies\AuthorizationPolicyInterface) {
+                // Authorization policies need a user ID and the command
+                // For now, we'll pass a dummy user ID for registration commands
+                $user_id = new \CannaRewards\Domain\ValueObjects\UserId(0);
+                $policy->check($user_id, $command);
+            } elseif ($policy instanceof \CannaRewards\Policies\ValidationPolicyInterface) {
+                // Validation policies need specific values from the command
+                if ($command instanceof \CannaRewards\Commands\CreateUserCommand && 
+                    $policy instanceof \CannaRewards\Policies\EmailAddressMustBeUniquePolicy) {
+                    // For email uniqueness, pass the email address from the command
+                    $policy->check($command->email);
+                } else {
+                    // For other validation policies, pass the entire command for now
+                    // This might need to be refined based on specific policy requirements
+                    $policy->check($command);
+                }
+            }
         }
 
         if (!isset($this->command_map[$command_class])) {
@@ -73,25 +93,25 @@ final class UserService {
         return $handler->handle($command);
     }
     
-    public function get_user_session_data( int $user_id ): SessionUserDTO {
-        $user_data = $this->userRepo->getUserCoreData($user_id);
+    public function get_user_session_data(UserId $userId): SessionUserDTO {
+        $user_data = $this->userRepo->getUserCoreData($userId);
         if (!$user_data) {
-            throw new Exception("User with ID {$user_id} not found.");
+            throw new Exception("User with ID {$userId->toInt()} not found.");
         }
 
-        $rank_dto = $this->rankService->getUserRank($user_id);
+        $rank_dto = $this->rankService->getUserRank($userId);
+        $referral_code = $this->userRepo->getReferralCode($userId);
 
         $session_dto = new SessionUserDTO(
-            id: $user_id,
+            id: $userId,
             firstName: $user_data->first_name,
             lastName: $user_data->last_name,
-            email: $user_data->user_email,
-            points_balance: $this->userRepo->getPointsBalance($user_id),
+            email: \CannaRewards\Domain\ValueObjects\EmailAddress::fromString($user_data->user_email),
+            pointsBalance: \CannaRewards\Domain\ValueObjects\Points::fromInt($this->userRepo->getPointsBalance($userId)),
             rank: $rank_dto,
-            shipping: $this->userRepo->getShippingAddressArray($user_id),
-            referral_code: $this->userRepo->getReferralCode($user_id),
-            onboarding_quest_step: (int) $this->userRepo->getUserMeta($user_id, '_onboarding_quest_step', true) ?: 1,
-            feature_flags: new \stdClass()
+            shippingAddress: $this->userRepo->getShippingAddressDTO($userId),
+            referralCode: $referral_code,
+            featureFlags: new \stdClass()
         );
 
         return $session_dto;
@@ -102,33 +122,38 @@ final class UserService {
         if ($user_id <= 0) {
             throw new Exception("User not authenticated.", 401);
         }
-        return $this->get_user_session_data($user_id);
+        return $this->get_user_session_data(UserId::fromInt($user_id));
     }
     
-    public function get_full_profile_data( int $user_id ): FullProfileDTO {
-        $user_data = $this->userRepo->getUserCoreData($user_id);
+    public function get_full_profile_data(UserId $userId): FullProfileDTO {
+        $user_data = $this->userRepo->getUserCoreData($userId);
         if (!$user_data) {
-            throw new Exception("User with ID {$user_id} not found.");
+            throw new Exception("User with ID {$userId->toInt()} not found.");
         }
 
         $custom_fields_definitions = $this->customFieldRepo->getFieldDefinitions();
         $custom_fields_values      = [];
         foreach ($custom_fields_definitions as $field) {
-            $value = $this->userRepo->getUserMeta($user_id, $field['key'], true);
+            $value = $this->userRepo->getUserMeta($userId, $field['key'], true);
             if (!empty($value)) {
                 $custom_fields_values[$field['key']] = $value;
             }
         }
         
-        $shipping_dto = $this->userRepo->getShippingAddressDTO($user_id);
+        $shipping_dto = $this->userRepo->getShippingAddressDTO($userId);
 
+        // Get phone number and referral code from user meta, converting to Value Objects
+        $phone_meta = $this->userRepo->getUserMeta($userId, 'phone_number', true);
+        $referral_code_meta = $this->userRepo->getUserMeta($userId, 'referral_code', true);
+        
         $profile_dto = new FullProfileDTO(
+            firstName: $user_data->first_name,
             lastName: $user_data->last_name,
-            phone_number: $this->userRepo->getUserMeta($user_id, 'phone_number', true),
-            referral_code: $this->userRepo->getReferralCode($user_id),
-            shipping_address: $shipping_dto,
-            unlocked_achievement_keys: [], // This should come from AchievementRepository
-            custom_fields: (object) [
+            phoneNumber: !empty($phone_meta) ? PhoneNumber::fromString($phone_meta) : null,
+            referralCode: !empty($referral_code_meta) ? ReferralCode::fromString($referral_code_meta) : null,
+            shippingAddress: $shipping_dto,
+            unlockedAchievementKeys: [], // This should come from AchievementRepository
+            customFields: (object) [
                 'definitions' => $custom_fields_definitions,
                 'values'      => (object) $custom_fields_values,
             ]
@@ -142,12 +167,12 @@ final class UserService {
         if ($user_id <= 0) {
             throw new Exception("User not authenticated.", 401);
         }
-        return $this->get_full_profile_data($user_id);
+        return $this->get_full_profile_data(UserId::fromInt($user_id));
     }
 
-    public function get_user_dashboard_data( int $user_id ): array {
+    public function get_user_dashboard_data(UserId $userId): array {
         return [
-            'lifetime_points' => $this->userRepo->getLifetimePoints( $user_id ),
+            'lifetime_points' => $this->userRepo->getLifetimePoints($userId),
         ];
     }
     

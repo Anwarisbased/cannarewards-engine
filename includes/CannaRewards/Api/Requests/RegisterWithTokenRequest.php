@@ -4,6 +4,7 @@ namespace CannaRewards\Api\Requests;
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\RegisterWithTokenCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Domain\ValueObjects\PlainTextPassword;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -31,13 +32,13 @@ class RegisterWithTokenRequest extends FormRequest {
 
         return new RegisterWithTokenCommand(
             EmailAddress::fromString($validated['email'], $wp),
-            $validated['password'],
+            PlainTextPassword::fromString($validated['password']),
             $validated['firstName'],
             $validated['lastName'] ?? '',
-            $validated['phone'] ?? '',
+            !empty($validated['phone']) ? \CannaRewards\Domain\ValueObjects\PhoneNumber::fromString($validated['phone']) : null,
             (bool) $validated['agreedToTerms'],
             (bool) ($validated['agreedToMarketing'] ?? false),
-            $validated['referralCode'] ?? null,
+            !empty($validated['referralCode']) ? \CannaRewards\Domain\ValueObjects\ReferralCode::fromString($validated['referralCode']) : null,
             $validated['registration_token']
         );
     }

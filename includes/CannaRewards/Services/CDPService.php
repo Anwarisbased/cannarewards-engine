@@ -1,6 +1,7 @@
 <?php
 namespace CannaRewards\Services;
 
+use CannaRewards\Domain\ValueObjects\UserId;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -51,7 +52,8 @@ class CDPService {
             return [];
         }
 
-        $rank_dto = $this->rankService->getUserRank($user_id);
+        $userIdVO = UserId::fromInt($user_id);
+        $rank_dto = $this->rankService->getUserRank($userIdVO);
 
         return [
             'identity' => [
@@ -65,7 +67,7 @@ class CDPService {
                 'lifetime_points' => (int) $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true),
             ],
             'status' => [
-                'rank_key' => $rank_dto->key,
+                'rank_key' => (string) $rank_dto->key,
                 'rank_name' => $rank_dto->name,
             ]
         ];

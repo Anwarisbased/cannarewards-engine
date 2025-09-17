@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\RewardCode;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
@@ -10,11 +13,11 @@ if ( ! defined( 'WPINC' ) ) {
  * Command DTO for processing a product scan.
  */
 final class ProcessProductScanCommand {
-    public $user_id;
-    public $code;
+    public UserId $userId;
+    public RewardCode $code;
 
-    public function __construct(int $user_id, string $code) {
-        $this->user_id = $user_id;
+    public function __construct(UserId $userId, RewardCode $code) {
+        $this->userId = $userId;
         $this->code = $code;
     }
 }

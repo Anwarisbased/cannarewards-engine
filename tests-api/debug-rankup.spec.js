@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
 
@@ -12,7 +13,7 @@ test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
     });
 
     // Create test user
-    const uniqueEmail = `rankup_audit_${Date.now()}@example.com`;
+    const uniqueEmail = generateUniqueEmail('rankup_audit');
     await request.post('/wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
       form: { action: 'reset_user_by_email', email: uniqueEmail }
     });
@@ -77,16 +78,18 @@ test.describe('Forensic Audit: User Rank-Up Lifecycle', () => {
     });
     expect(claimResponse.ok()).toBeTruthy();
     const claimData = await claimResponse.json();
-    expect(claimData.data.success).toBe(true);
+    expect(claimData.success).toBe(true);
 
     // Assert: API must now report user's rank as 'silver'
     // Wait a moment for the async points processing to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise(resolve => setTimeout(resolve, 3000)); // 3 second delay
 
     const finalSession = await request.get('/wp-json/rewards/v2/users/me/session', {
       headers: { 'Authorization': `Bearer ${authToken}` }
     });
+    expect(finalSession.ok()).toBeTruthy();
     const finalSessionData = await finalSession.json();
+    console.log('Session data after scan:', JSON.stringify(finalSessionData, null, 2));
     expect(finalSessionData.data.rank.key).toBe('silver');
   });
 });

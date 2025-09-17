@@ -37,7 +37,9 @@ class ReferralService {
         $referrer_user_id = $this->user_repository->findUserIdByReferralCode($referral_code);
 
         if ($referrer_user_id) {
-            $this->user_repository->setReferredBy($new_user_id, $referrer_user_id);
+            $new_user_id_vo = \CannaRewards\Domain\ValueObjects\UserId::fromInt($new_user_id);
+            $referrer_user_id_vo = \CannaRewards\Domain\ValueObjects\UserId::fromInt($referrer_user_id);
+            $this->user_repository->setReferredBy($new_user_id_vo, $referrer_user_id_vo);
             $this->execute_triggers('referral_invitee_signed_up', $new_user_id, ['referrer_id' => $referrer_user_id]);
         }
     }
@@ -49,7 +51,8 @@ class ReferralService {
         }
 
         if (1 === $this->action_log_repository->countUserActions($user_id, 'scan')) {
-            $referrer_user_id = $this->user_repository->getReferringUserId($user_id);
+            $user_id_vo = \CannaRewards\Domain\ValueObjects\UserId::fromInt($user_id);
+            $referrer_user_id = $this->user_repository->getReferringUserId($user_id_vo);
             
             if ($referrer_user_id) {
                 $this->execute_triggers('referral_converted', $referrer_user_id, ['invitee_id' => $user_id]);
@@ -99,7 +102,8 @@ class ReferralService {
             $exists = $this->user_repository->findUserIdByReferralCode($new_code);
         } while (!is_null($exists));
         
-        $this->user_repository->saveReferralCode($user_id, $new_code);
+        $user_id_vo = new \CannaRewards\Domain\ValueObjects\UserId($user_id);
+        $this->user_repository->saveReferralCode($user_id_vo, $new_code);
         return $new_code;
     }
     

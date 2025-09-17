@@ -85,8 +85,8 @@ class GamificationService {
         $points_reward = (int) $achievement->points_reward;
         if ($points_reward > 0) {
             $command = new GrantPointsCommand(
-                $user_id,
-                $points_reward,
+                \CannaRewards\Domain\ValueObjects\UserId::fromInt($user_id),
+                \CannaRewards\Domain\ValueObjects\Points::fromInt($points_reward),
                 'Achievement Unlocked: ' . $achievement->title
             );
             $this->economy_service->handle($command);

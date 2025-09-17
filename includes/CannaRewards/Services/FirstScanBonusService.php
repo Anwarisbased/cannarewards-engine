@@ -5,7 +5,6 @@ use CannaRewards\Commands\RedeemRewardCommand;
 use CannaRewards\Commands\RedeemRewardCommandHandler;
 use CannaRewards\Includes\EventBusInterface;
 use CannaRewards\Domain\ValueObjects\UserId;
-use CannaRewards\Domain\ValueObjects\ProductId;
 
 final class FirstScanBonusService {
     private ConfigService $configService;
@@ -32,7 +31,7 @@ final class FirstScanBonusService {
         if ($user_id > 0 && $is_first_scan) {
             $welcome_reward_id = $this->configService->getWelcomeRewardProductId();
             if ($welcome_reward_id > 0) {
-                $this->redeemHandler->handle(new RedeemRewardCommand(UserId::fromInt($user_id), ProductId::fromInt($welcome_reward_id), []));
+                $this->redeemHandler->handle(new RedeemRewardCommand(UserId::fromInt($user_id), \CannaRewards\Domain\ValueObjects\ProductId::fromInt($welcome_reward_id), []));
             }
         }
     }

@@ -2,27 +2,30 @@
 namespace CannaRewards\Commands;
 
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Domain\ValueObjects\PlainTextPassword;
+use CannaRewards\Domain\ValueObjects\PhoneNumber;
+use CannaRewards\Domain\ValueObjects\ReferralCode;
 
 final class RegisterWithTokenCommand {
     public EmailAddress $email;
-    public string $password;
+    public PlainTextPassword $password;
     public string $first_name;
     public string $last_name;
-    public string $phone;
+    public ?PhoneNumber $phone;
     public bool $agreed_to_terms;
     public bool $agreed_to_marketing;
-    public ?string $referral_code;
+    public ?ReferralCode $referral_code;
     public string $registration_token;
 
     public function __construct(
         EmailAddress $email,
-        string $password,
+        PlainTextPassword $password,
         string $first_name,
         string $last_name,
-        string $phone,
+        ?PhoneNumber $phone,
         bool $agreed_to_terms,
         bool $agreed_to_marketing,
-        ?string $referral_code,
+        ?ReferralCode $referral_code,
         string $registration_token
     ) {
         $this->email = $email;

@@ -31,7 +31,8 @@ class ProfileController {
 
     public function update_profile( UpdateProfileRequest $request ) {
         try {
-            $command = $request->to_command(); // The command will get the user ID from the request
+            $user_id = get_current_user_id();
+            $command = $request->to_command($user_id); // Pass the user ID to the command
             $this->user_service->handle($command);
             
             // After updating, get the fresh profile data to return

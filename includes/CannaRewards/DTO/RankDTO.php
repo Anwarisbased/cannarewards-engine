@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\DTO;
 
+use CannaRewards\Domain\ValueObjects\Points;
+use CannaRewards\Domain\ValueObjects\RankKey;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -10,15 +12,15 @@ use OpenApi\Attributes as OA;
 final class RankDTO {
     public function __construct(
         #[OA\Property(type: "string", example: "gold", description: "The unique, machine-readable key for the rank.")]
-        public readonly string $key,
+        public readonly RankKey $key,
         
         #[OA\Property(type: "string", example: "Gold", description: "The human-readable name of the rank.")]
         public readonly string $name,
         
         #[OA\Property(type: "integer", example: 5000, description: "The lifetime points required to achieve this rank.")]
-        public readonly int $points,
+        public readonly Points $pointsRequired,
         
         #[OA\Property(type: "number", format: "float", example: 1.5, description: "The point earning multiplier for this rank.")]
-        public readonly float $point_multiplier
+        public readonly float $pointMultiplier
     ) {}
 }

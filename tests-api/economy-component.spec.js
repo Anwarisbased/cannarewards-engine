@@ -80,9 +80,9 @@ test.describe('Component Test: GrantPointsCommandHandler', () => {
     expect(responseBody.success, `Harness response was not successful. Error: ${responseBody.message}`).toBe(true);
 
     // Gold rank has a 2.0x multiplier. 100 base points * 2.0 = 200.
-    expect(responseBody.data.points_earned).toBe(200);
+    expect(responseBody.data.pointsEarned).toBe(200);
     // Initial balance was 1000. 1000 + 200 = 1200.
-    expect(responseBody.data.new_points_balance).toBe(1200);
+    expect(responseBody.data.newPointsBalance).toBe(1200);
   });
   
   test('should not apply a multiplier for a standard member', async ({ request }) => {
@@ -114,8 +114,8 @@ test.describe('Component Test: GrantPointsCommandHandler', () => {
     expect(responseBody.success).toBe(true);
 
     // Member rank has no multiplier (or 1.0x). Points earned should be base points.
-    expect(responseBody.data.points_earned).toBe(100);
+    expect(responseBody.data.pointsEarned).toBe(100);
     // Initial balance was 500. 500 + 100 = 600.
-    expect(responseBody.data.new_points_balance).toBe(600);
+    expect(responseBody.data.newPointsBalance).toBe(600);
   });
 });

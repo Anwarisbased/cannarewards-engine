@@ -1,19 +1,22 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\ProductId;
+
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
 
 final class RedeemRewardCommand {
-    public $user_id;
-    public $product_id;
-    public $shipping_details;
+    public UserId $userId;
+    public ProductId $productId;
+    public array $shippingDetails;
 
-    public function __construct(int $user_id, int $product_id, array $shipping_details = []) {
-        $this->user_id = $user_id;
-        $this->product_id = $product_id;
-        $this->shipping_details = $shipping_details;
+    public function __construct(UserId $userId, ProductId $productId, array $shippingDetails = []) {
+        $this->userId = $userId;
+        $this->productId = $productId;
+        $this->shippingDetails = $shippingDetails;
     }
 }

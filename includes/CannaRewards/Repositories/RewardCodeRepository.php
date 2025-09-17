@@ -1,6 +1,8 @@
 <?php
 namespace CannaRewards\Repositories;
 
+use CannaRewards\Domain\ValueObjects\RewardCode;
+use CannaRewards\Domain\ValueObjects\UserId;
 use CannaRewards\Infrastructure\WordPressApiWrapper;
 
 // Exit if accessed directly.
@@ -26,11 +28,11 @@ class RewardCodeRepository {
      *
      * @return object|null The code data object or null if not found.
      */
-    public function findValidCode(string $code_to_claim): ?object {
+    public function findValidCode(RewardCode $codeToClaim): ?object {
         $full_table_name = $this->wp->getDbPrefix() . $this->table_name;
         $query = $this->wp->dbPrepare(
             "SELECT id, sku FROM {$full_table_name} WHERE code = %s AND is_used = 0",
-            $code_to_claim
+            $codeToClaim->value
         );
         return $this->wp->dbGetRow($query);
     }
@@ -38,12 +40,12 @@ class RewardCodeRepository {
     /**
      * Marks a reward code as used by a specific user.
      */
-    public function markCodeAsUsed(int $code_id, int $user_id): void {
+    public function markCodeAsUsed(int $code_id, UserId $user_id): void {
         $this->wp->dbUpdate(
             $this->table_name,
             [
                 'is_used'    => 1,
-                'user_id'    => $user_id,
+                'user_id'    => $user_id->toInt(),
                 'claimed_at' => current_time('mysql', 1)
             ],
             ['id' => $code_id]

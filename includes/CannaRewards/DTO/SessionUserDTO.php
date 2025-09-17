@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\DTO;
 
+use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Domain\ValueObjects\Points;
+use CannaRewards\Domain\ValueObjects\UserId;
 use OpenApi\Attributes as OA;
 
 #[OA\Schema(
@@ -10,44 +13,40 @@ use OpenApi\Attributes as OA;
 final class SessionUserDTO {
     public function __construct(
         #[OA\Property(type: "integer", example: 123)]
-        public readonly int $id,
+        public readonly UserId $id,
 
         #[OA\Property(type: "string", example: "Jane", nullable: true)]
-        public readonly ?string $firstName,
+        public readonly string $firstName,
         
         #[OA\Property(type: "string", example: "Doe", nullable: true)]
         public readonly ?string $lastName,
 
         #[OA\Property(type: "string", format: "email", example: "jane.doe@example.com")]
-        public readonly string $email,
+        public readonly EmailAddress $email,
         
         #[OA\Property(type: "integer", example: 1250)]
-        public readonly int $points_balance,
+        public readonly Points $pointsBalance,
 
-        #[OA\Property(
-            description: "The user's current rank.",
-            properties: [
-                new OA\Property(property: 'key', type: 'string', example: 'silver'),
-                new OA\Property(property: 'name', type: 'string', example: 'Silver'),
-            ],
-            type: 'object'
-        )]
+        #[OA\Property(ref: "#/components/schemas/Rank")]
         public readonly RankDTO $rank,
 
-        #[OA\Property(type: "array", items: new OA\Items(type: "string"))]
-        public readonly array $shipping,
+        // ShippingAddress is now a DTO
+        #[OA\Property(ref: "#/components/schemas/ShippingAddress")]
+        public readonly ?ShippingAddressDTO $shippingAddress,
 
-        #[OA\Property(type: "string", example: "JANE1A2B", nullable: true)]
-        public readonly ?string $referral_code,
-
-        #[OA\Property(type: "integer", example: 2, description: "Tracks the user's progress in the onboarding flow.")]
-        public readonly int $onboarding_quest_step,
+        #[OA\Property(
+            type: "string",
+            description: "User's unique referral code",
+            example: "JANE1A2B",
+            nullable: true
+        )]
+        public readonly ?string $referralCode,
 
         #[OA\Property(
             type: "object",
             description: "Flags for A/B testing frontend features.",
             example: ["dashboard_version" => "B"]
         )]
-        public readonly object $feature_flags
+        public readonly object $featureFlags
     ) {}
 }

@@ -28,6 +28,10 @@ async function createTestUser(request) {
       password: 'test-password',
     }
   });
+  if (!loginResponse.ok()) {
+    const errorBody = await loginResponse.text();
+    console.log('Login error response:', errorBody);
+  }
   expect(loginResponse.ok()).toBeTruthy();
   const loginData = await loginResponse.json();
   return { authToken: loginData.token, userEmail: uniqueEmail };
@@ -84,12 +88,18 @@ test.describe('Economy & Redemption Flow', () => {
       }
     });
 
+    // Print error response if redemption fails
+    if (!redeemResponse.ok()) {
+      const errorBody = await redeemResponse.text();
+      console.log('Redemption error response:', errorBody);
+    }
+
     // --- CONTRACT ENFORCEMENT ---
     await expect(async () => await validateApiContract(redeemResponse, '/actions/redeem', 'post')).toPass();
 
     expect(redeemResponse.ok()).toBeTruthy();
     const redeemData = await redeemResponse.json();
-    expect(redeemData.data.success).toBe(true);
+    expect(redeemData.success).toBe(true);
     expect(redeemData.data.new_points_balance).toBe(5000);
 
     const sessionResponse = await request.get('/wp-json/rewards/v2/users/me/session', {

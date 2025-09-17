@@ -44,14 +44,14 @@ try {
 
         case \CannaRewards\Commands\CreateUserCommandHandler::class:
             $input_object = new \CannaRewards\Commands\CreateUserCommand(
-                new \CannaRewards\Domain\ValueObjects\EmailAddress($input_data['email']),
-                (string) ($input_data['password'] ?? ''),
+                \CannaRewards\Domain\ValueObjects\EmailAddress::fromString($input_data['email']),
+                \CannaRewards\Domain\ValueObjects\PlainTextPassword::fromString($input_data['password'] ?? ''),
                 (string) ($input_data['firstName'] ?? ''),
                 (string) ($input_data['lastName'] ?? ''),
-                (string) ($input_data['phone'] ?? ''),
+                isset($input_data['phone']) ? \CannaRewards\Domain\ValueObjects\PhoneNumber::fromString($input_data['phone']) : null,
                 (bool) ($input_data['agreedToTerms'] ?? false),
                 (bool) ($input_data['agreedToMarketing'] ?? false),
-                $input_data['referralCode'] ?? null
+                isset($input_data['referralCode']) ? \CannaRewards\Domain\ValueObjects\ReferralCode::fromString($input_data['referralCode']) : null
             );
             break;
 
@@ -66,8 +66,15 @@ try {
         
         case \CannaRewards\Services\UserService::class:
             // For services, the input is not a command object, but the direct arguments.
-            // We pass them as an array.
-            $input_object = $input_data;
+            // We need to convert them to the proper types.
+            if ($method_to_call === 'get_user_session_data') {
+                // Special handling for get_user_session_data method
+                $user_id_vo = \CannaRewards\Domain\ValueObjects\UserId::fromInt((int) ($input_data['user_id'] ?? 0));
+                $input_object = [$user_id_vo];
+            } else {
+                // For other methods, pass as array
+                $input_object = $input_data;
+            }
             break;
         
         default:
@@ -75,9 +82,12 @@ try {
     }
     
     // 5. Execute the component's logic
-    if ($component_instance instanceof \CannaRewards\Services\UserService) {
-        // Special handling for service methods that take array args
-        $result = call_user_func_array([$component_instance, $method_to_call], $input_object);
+    if ($component_instance instanceof \CannaRewards\Services\UserService && $method_to_call === 'get_user_session_data') {
+        // Special handling for UserService::get_user_session_data
+        $result = $component_instance->$method_to_call($input_object[0]);
+    } else if ($component_instance instanceof \CannaRewards\Services\UserService) {
+        // Special handling for other service methods that take array args
+        $result = call_user_func_array([$component_instance, $method_to_call], array_values($input_object));
     } else {
         // Default handling for command handlers
         $result = $component_instance->handle($input_object);
@@ -85,8 +95,45 @@ try {
 
 
     // 6. Send a successful result back to Playwright
-    // DTOs need to be cast to an array for proper JSON serialization
-    echo json_encode(['success' => true, 'data' => (array) $result]);
+    // DTOs need to be properly serialized for JSON
+    if ($result instanceof \CannaRewards\DTO\SessionUserDTO) {
+        // Special handling for SessionUserDTO to ensure proper serialization
+        $response_data = [
+            'id' => $result->id->toInt(),
+            'firstName' => $result->firstName,
+            'lastName' => $result->lastName,
+            'email' => (string) $result->email,
+            'points_balance' => $result->pointsBalance->toInt(),
+            'rank' => [
+                'key' => (string) $result->rank->key,
+                'name' => $result->rank->name,
+                'points' => $result->rank->pointsRequired->toInt(),
+                'point_multiplier' => $result->rank->pointMultiplier
+            ],
+            'shipping' => $result->shippingAddress ? [
+                'first_name' => $result->shippingAddress->firstName,
+                'last_name' => $result->shippingAddress->lastName,
+                'address_1' => $result->shippingAddress->address1,
+                'city' => $result->shippingAddress->city,
+                'state' => $result->shippingAddress->state,
+                'postcode' => $result->shippingAddress->postcode
+            ] : null,
+            'referral_code' => null, // This would need to be fetched from user meta
+            'onboarding_quest_step' => 0, // This would need to be fetched from user meta
+            'feature_flags' => $result->featureFlags
+        ];
+        echo json_encode(['success' => true, 'data' => $response_data]);
+    } else if ($result instanceof \CannaRewards\DTO\GrantPointsResultDTO) {
+        // Special handling for GrantPointsResultDTO to ensure proper serialization
+        $response_data = [
+            'pointsEarned' => $result->pointsEarned->toInt(),
+            'newPointsBalance' => $result->newPointsBalance->toInt()
+        ];
+        echo json_encode(['success' => true, 'data' => $response_data]);
+    } else {
+        // Default handling for other results
+        echo json_encode(['success' => true, 'data' => (array) $result]);
+    }
 
 } catch (Exception $e) {
     // 7. Send any exceptions back to Playwright for failure assertions

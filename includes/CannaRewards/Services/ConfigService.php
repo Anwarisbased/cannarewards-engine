@@ -47,6 +47,10 @@ class ConfigService {
         return true;
     }
 
+    public function isRegistrationEnabled(): bool {
+        return $this->canUsersRegister();
+    }
+
     /**
      * Assembles the complete application configuration object for the frontend.
      */

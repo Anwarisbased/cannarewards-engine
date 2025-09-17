@@ -34,7 +34,7 @@ final class UpdateProfileCommandHandler {
      * @throws Exception
      */
     public function handle(UpdateProfileCommand $command): void {
-        $user_id = $command->user_id;
+        $user_id = \CannaRewards\Domain\ValueObjects\UserId::fromInt($command->user_id);
         $data = $command->data;
         $changed_fields = [];
 
@@ -55,9 +55,21 @@ final class UpdateProfileCommandHandler {
             }
         }
 
-        if (isset($data['phone_number'])) {
+        // Update shipping address when firstName or lastName changes
+        $shipping_data = [];
+        if (isset($data['firstName'])) {
+            $shipping_data['firstName'] = sanitize_text_field($data['firstName']);
+        }
+        if (isset($data['lastName'])) {
+            $shipping_data['lastName'] = sanitize_text_field($data['lastName']);
+        }
+        if (count($shipping_data) > 0) {
+            $this->user_repository->saveShippingAddress($user_id, $shipping_data);
+        }
+
+        if (isset($data['phone'])) {
             // REFACTOR: Use the UserRepository instead of direct WordPress function
-            $this->user_repository->updateUserMetaField($user_id, 'phone_number', sanitize_text_field($data['phone_number']));
+            $this->user_repository->updateUserMetaField($user_id, 'phone_number', sanitize_text_field($data['phone']));
             $changed_fields[] = 'phone_number';
         }
 
@@ -73,8 +85,8 @@ final class UpdateProfileCommandHandler {
 
         if (!empty($changed_fields)) {
             $log_meta_data = ['changed_fields' => $changed_fields];
-            $this->action_log_service->record($user_id, 'profile_updated', 0, $log_meta_data);
-            $this->cdp_service->track($user_id, 'user_profile_updated', $log_meta_data);
+            $this->action_log_service->record($command->user_id, 'profile_updated', 0, $log_meta_data);
+            $this->cdp_service->track($command->user_id, 'user_profile_updated', $log_meta_data);
         }
     }
 }

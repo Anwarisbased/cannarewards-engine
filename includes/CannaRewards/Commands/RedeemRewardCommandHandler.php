@@ -1,6 +1,9 @@
 <?php
 namespace CannaRewards\Commands;
 
+use CannaRewards\Domain\ValueObjects\OrderId;
+use CannaRewards\Domain\ValueObjects\Points;
+use CannaRewards\DTO\RedeemRewardResultDTO;
 use CannaRewards\Repositories\ProductRepository;
 use CannaRewards\Repositories\UserRepository;
 use CannaRewards\Repositories\OrderRepository;
@@ -41,19 +44,19 @@ final class RedeemRewardCommandHandler {
         $this->wp = $wp; // <<<--- ASSIGN WRAPPER
     }
 
-    public function handle(RedeemRewardCommand $command): array {
-        $user_id = $command->user_id;
-        $product_id = $command->product_id;
+    public function handle(RedeemRewardCommand $command): RedeemRewardResultDTO {
+        $user_id = $command->userId->toInt();
+        $product_id = $command->productId->toInt();
         
-        $points_cost = $this->productRepo->getPointsCost($product_id);
-        $current_balance = $this->userRepo->getPointsBalance($user_id);
+        $points_cost = $this->productRepo->getPointsCost($command->productId);
+        $current_balance = $this->userRepo->getPointsBalance($command->userId);
         $new_balance = $current_balance - $points_cost;
 
-        $order_id = $this->orderRepo->createFromRedemption($user_id, $product_id, $command->shipping_details);
+        $order_id = $this->orderRepo->createFromRedemption($user_id, $product_id, $command->shippingDetails);
         if (!$order_id) { throw new Exception('Failed to create order for redemption.'); }
 
-        $this->userRepo->saveShippingAddress($user_id, $command->shipping_details);
-        $this->userRepo->savePointsAndRank($user_id, $new_balance, $this->userRepo->getLifetimePoints($user_id), $this->userRepo->getCurrentRankKey($user_id));
+        $this->userRepo->saveShippingAddress($command->userId, $command->shippingDetails);
+        $this->userRepo->savePointsAndRank($command->userId, $new_balance, $this->userRepo->getLifetimePoints($command->userId), $this->userRepo->getCurrentRankKey($command->userId));
 
         $product_name = $this->wp->getTheTitle($product_id);
         $log_meta_data = ['description' => 'Redeemed: ' . $product_name, 'points_change' => -$points_cost, 'new_balance' => $new_balance, 'order_id' => $order_id];
@@ -64,6 +67,9 @@ final class RedeemRewardCommandHandler {
         // REFACTOR: Use the injected event bus
         $this->eventBus->broadcast('reward_redeemed', $full_context);
         
-        return ['success' => true, 'order_id' => $order_id, 'new_points_balance' => $new_balance];
+        return new RedeemRewardResultDTO(
+            OrderId::fromInt($order_id),
+            Points::fromInt($new_balance)
+        );
     }
 }

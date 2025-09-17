@@ -31,9 +31,13 @@ final class StandardScanService {
 
         // Only grant points if it's NOT the first scan and we have a valid user/product
         if ($user_id > 0 && $product_id > 0 && !$is_first_scan) {
-            $base_points = $this->productRepo->getPointsAward($product_id);
+            $base_points = $this->productRepo->getPointsAward(\CannaRewards\Domain\ValueObjects\ProductId::fromInt($product_id));
             if ($base_points > 0) {
-                $command = new GrantPointsCommand($user_id, $base_points, 'Product Scan: ' . $product_name);
+                $command = new GrantPointsCommand(
+                    \CannaRewards\Domain\ValueObjects\UserId::fromInt($user_id),
+                    \CannaRewards\Domain\ValueObjects\Points::fromInt($base_points),
+                    'Product Scan: ' . $product_name
+                );
                 $this->grantPointsHandler->handle($command);
             }
         }

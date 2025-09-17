@@ -1,11 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { validateApiContract } from './api-contract-validator.js';
+import { generateUniqueEmail } from './parallel-fix.js';
 
 /**
  * Helper to create a unique test user for this audit.
  */
 async function createAuditUser(request) {
-  const uniqueEmail = `rank_audit_${Date.now()}@example.com`;
+  const uniqueEmail = generateUniqueEmail('rank_audit');
   
   await request.post('wp-content/plugins/cannarewards-engine/tests-api/test-helper.php', {
       form: { action: 'reset_user_by_email', email: uniqueEmail }

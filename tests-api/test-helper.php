@@ -49,7 +49,16 @@ switch ($action) {
             'post_status'    => 'publish',
         ];
         $rank_posts = new WP_Query($args);
-        echo json_encode(['success' => true, 'ranks_found' => $rank_posts->posts]);
+        
+        // Add points required information
+        $ranks_with_points = [];
+        foreach ($rank_posts->posts as $post) {
+            $points_required = get_post_meta($post->ID, 'points_required', true);
+            $post->points_required = $points_required;
+            $ranks_with_points[] = $post;
+        }
+        
+        echo json_encode(['success' => true, 'ranks_found' => $ranks_with_points]);
         break;
 
     case 'clear_rank_cache':
@@ -125,6 +134,88 @@ switch ($action) {
             echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
         } else {
             echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
+        }
+        break;
+
+    case 'setup_test_achievement':
+        // Delete any existing achievement with the key scan_3_times
+        $wpdb->delete($wpdb->prefix . 'canna_achievements', ['achievement_key' => 'scan_3_times']);
+        
+        // Insert a new test achievement
+        $wpdb->insert($wpdb->prefix . 'canna_achievements', [
+            'achievement_key' => 'scan_3_times',
+            'title' => 'Triple Scanner',
+            'trigger_event' => 'product_scanned',
+            'trigger_count' => 3,
+            'points_reward' => 500,
+            'conditions' => '[]'
+        ]);
+        
+        echo json_encode(['success' => true, 'message' => 'Test achievement has been set up.']);
+        break;
+
+    case 'setup_rank_restricted_product':
+        // Find a product with SKU PWT-RANK-LOCK
+        $product_id = wc_get_product_id_by_sku('PWT-RANK-LOCK');
+        if (!$product_id) {
+            // If it doesn't exist, create it
+            $product = new WC_Product_Simple();
+            $product->set_name('Rank Locked Product');
+            $product->set_sku('PWT-RANK-LOCK');
+            $product->set_regular_price('10.00');
+            $product->set_virtual(true);
+            $product_id = $product->save();
+        }
+        
+        // Update the product's post meta to set the required rank to gold
+        update_post_meta($product_id, '_required_rank', 'gold');
+        
+        echo json_encode(['success' => true, 'message' => "Rank restricted product with SKU PWT-RANK-LOCK (ID: {$product_id}) has been set up with gold rank requirement.", 'product_id' => $product_id]);
+        break;
+
+    case 'get_product_required_rank':
+        $product_id = (int) ($_POST['product_id'] ?? 0);
+        if (empty($product_id)) {
+            echo json_encode(['success' => false, 'message' => 'Product ID parameter is missing.']);
+            exit;
+        }
+        
+        $required_rank = get_post_meta($product_id, '_required_rank', true);
+        echo json_encode(['success' => true, 'required_rank' => $required_rank]);
+        break;
+
+    case 'get_user_rank':
+        $email = sanitize_email($_POST['email'] ?? '');
+        if (empty($email)) {
+            echo json_encode(['success' => false, 'message' => 'Email parameter is missing.']);
+            exit;
+        }
+        
+        $user = get_user_by('email', $email);
+        if (!$user) {
+            echo json_encode(['success' => false, 'message' => 'User not found.']);
+            exit;
+        }
+        
+        $user_id = $user->ID;
+        $lifetime_points = get_user_meta($user_id, '_canna_lifetime_points', true);
+        $current_rank_key = get_user_meta($user_id, '_canna_current_rank_key', true);
+        
+        echo json_encode([
+            'success' => true, 
+            'user_id' => $user_id,
+            'lifetime_points' => $lifetime_points,
+            'current_rank_key' => $current_rank_key
+        ]);
+        break;
+
+    case 'get_rank_restricted_product_id':
+        // Find a product with SKU PWT-RANK-LOCK
+        $product_id = wc_get_product_id_by_sku('PWT-RANK-LOCK');
+        if (!$product_id) {
+            echo json_encode(['success' => false, 'message' => 'Product with SKU PWT-RANK-LOCK not found.']);
+        } else {
+            echo json_encode(['success' => true, 'product_id' => $product_id]);
         }
         break;
 

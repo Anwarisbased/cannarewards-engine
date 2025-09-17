@@ -4,12 +4,15 @@ namespace CannaRewards\Api\Requests;
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\CreateUserCommand;
 use CannaRewards\Domain\ValueObjects\EmailAddress;
-use CannaRewards\Infrastructure\WordPressApiWrapper;
+use CannaRewards\Domain\ValueObjects\PlainTextPassword;
+use CannaRewards\Domain\ValueObjects\PhoneNumber;
+use CannaRewards\Domain\ValueObjects\ReferralCode;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
+
 
 class RegisterUserRequest extends FormRequest {
 
@@ -25,18 +28,15 @@ class RegisterUserRequest extends FormRequest {
     public function to_command(): CreateUserCommand {
         $validated = $this->validated();
 
-        // REFACTOR: Get WordPressApiWrapper from the global container to pass to EmailAddress
-        $wp = \CannaRewards()->get(WordPressApiWrapper::class);
-
         return new CreateUserCommand(
-            EmailAddress::fromString($validated['email'], $wp),
-            $validated['password'],
+            EmailAddress::fromString($validated['email']),
+            PlainTextPassword::fromString($validated['password']),
             $validated['firstName'],
             $validated['lastName'] ?? '',
-            $validated['phone'] ?? '',
+            !empty($validated['phone']) ? PhoneNumber::fromString($validated['phone']) : null,
             (bool) $validated['agreedToTerms'],
             (bool) ($validated['agreedToMarketing'] ?? false),
-            $validated['referralCode'] ?? null
+            !empty($validated['referralCode']) ? ReferralCode::fromString($validated['referralCode']) : null
         );
     }
 }

@@ -16,7 +16,7 @@ test.describe('Component Test: CreateUserCommandHandler', () => {
     // ACT: Call the component harness to directly execute the handler
     const harnessResponse = await request.post('/wp-content/plugins/cannarewards-engine/tests-api/component-harness-minimal.php', {
       data: {
-        component: 'CannaRewards\\\\Commands\\\\CreateUserCommandHandler',
+        component: 'CannaRewards\\Commands\\CreateUserCommandHandler',
         input: {
           email: testUserEmail,
           password: 'a-secure-password',
@@ -31,6 +31,10 @@ test.describe('Component Test: CreateUserCommandHandler', () => {
     });
 
     // ASSERT: Check the result from the harness
+    if (!harnessResponse.ok()) {
+        const errorBody = await harnessResponse.text();
+        console.log('Harness error response:', errorBody);
+    }
     expect(harnessResponse.ok(), `Harness failed with status ${harnessResponse.status()}`).toBeTruthy();
     const responseBody = await harnessResponse.json();
 

@@ -2,6 +2,7 @@
 namespace CannaRewards\Services;
 
 use WP_Post;
+use CannaRewards\Domain\ValueObjects\UserId;
 use CannaRewards\Repositories\ActionLogRepository; // <<<--- IMPORT THE REPOSITORY
 use CannaRewards\Infrastructure\WordPressApiWrapper; // <<<--- IMPORT THE WRAPPER
 
@@ -54,7 +55,8 @@ class ContextBuilderService {
         $total_scans = $this->actionLogRepo->countUserActions($user_id, 'scan');
         // --- END FIX ---
         
-        $rank_dto = $this->rankService->getUserRank($user_id);
+        $userIdVO = UserId::fromInt($user_id);
+        $rank_dto = $this->rankService->getUserRank($userIdVO);
 
         return [
             'identity' => [
@@ -69,7 +71,7 @@ class ContextBuilderService {
                 'lifetime_points' => (int) $this->wp->getUserMeta($user_id, '_canna_lifetime_points', true),
             ],
             'status' => [
-                'rank_key' => $rank_dto->key,
+                'rank_key' => (string) $rank_dto->key,
                 'rank_name' => $rank_dto->name,
             ],
             'engagement' => [

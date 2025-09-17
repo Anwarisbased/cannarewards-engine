@@ -2,6 +2,9 @@
 namespace CannaRewards\Commands;
 
 use CannaRewards\Domain\ValueObjects\EmailAddress;
+use CannaRewards\Domain\ValueObjects\PlainTextPassword;
+use CannaRewards\Domain\ValueObjects\PhoneNumber;
+use CannaRewards\Domain\ValueObjects\ReferralCode;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
@@ -13,32 +16,32 @@ if ( ! defined( 'WPINC' ) ) {
  * It now requires a validated EmailAddress Value Object.
  */
 final class CreateUserCommand {
-    public EmailAddress $email; // <-- Type-hinted to the Value Object
-    public string $password;
-    public string $first_name;
-    public string $last_name;
-    public string $phone;
-    public bool $agreed_to_terms;
-    public bool $agreed_to_marketing;
-    public ?string $referral_code;
+    public EmailAddress $email;
+    public PlainTextPassword $password;
+    public string $firstName;
+    public string $lastName;
+    public ?PhoneNumber $phone;
+    public bool $agreedToTerms;
+    public bool $agreedToMarketing;
+    public ?ReferralCode $referralCode;
 
     public function __construct(
-        EmailAddress $email, // <-- The constructor demands the Value Object
-        string $password,
-        string $first_name,
-        string $last_name,
-        string $phone,
-        bool $agreed_to_terms,
-        bool $agreed_to_marketing,
-        ?string $referral_code
+        EmailAddress $email,
+        PlainTextPassword $password,
+        string $firstName,
+        string $lastName,
+        ?PhoneNumber $phone,
+        bool $agreedToTerms,
+        bool $agreedToMarketing,
+        ?ReferralCode $referralCode
     ) {
         $this->email = $email;
         $this->password = $password;
-        $this->first_name = $first_name;
-        $this->last_name = $last_name;
+        $this->firstName = $firstName;
+        $this->lastName = $lastName;
         $this->phone = $phone;
-        $this->agreed_to_terms = $agreed_to_terms;
-        $this->agreed_to_marketing = $agreed_to_marketing;
-        $this->referral_code = $referral_code;
+        $this->agreedToTerms = $agreedToTerms;
+        $this->agreedToMarketing = $agreedToMarketing;
+        $this->referralCode = $referralCode;
     }
 }

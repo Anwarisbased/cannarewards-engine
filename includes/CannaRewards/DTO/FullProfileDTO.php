@@ -1,14 +1,20 @@
 <?php
 namespace CannaRewards\DTO;
 
-// Represents the complete user profile data for the /users/me/profile endpoint.
+use CannaRewards\Domain\ValueObjects\PhoneNumber;
+use CannaRewards\Domain\ValueObjects\ReferralCode;
+
 final class FullProfileDTO {
+    /**
+     * @param string[] $unlockedAchievementKeys
+     */
     public function __construct(
+        public readonly string $firstName,
         public readonly ?string $lastName,
-        public readonly ?string $phone_number,
-        public readonly ?string $referral_code,
-        public readonly ShippingAddressDTO $shipping_address,
-        public readonly array $unlocked_achievement_keys = [],
-        public readonly object $custom_fields
+        public readonly ?PhoneNumber $phoneNumber,
+        public readonly ?ReferralCode $referralCode,
+        public readonly ?ShippingAddressDTO $shippingAddress,
+        public readonly array $unlockedAchievementKeys = [],
+        public readonly object $customFields
     ) {}
 }

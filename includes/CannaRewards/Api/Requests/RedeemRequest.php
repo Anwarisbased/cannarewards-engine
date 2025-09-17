@@ -3,11 +3,14 @@ namespace CannaRewards\Api\Requests;
 
 use CannaRewards\Api\FormRequest;
 use CannaRewards\Commands\RedeemRewardCommand;
+use CannaRewards\Domain\ValueObjects\UserId;
+use CannaRewards\Domain\ValueObjects\ProductId;
 
 // Exit if accessed directly.
 if ( ! defined( 'WPINC' ) ) {
     die;
 }
+
 
 class RedeemRequest extends FormRequest {
 
@@ -28,8 +31,8 @@ class RedeemRequest extends FormRequest {
         $validated = $this->validated();
 
         return new RedeemRewardCommand(
-            $user_id,
-            (int) $validated['productId'],
+            UserId::fromInt($user_id),
+            ProductId::fromInt((int) $validated['productId']),
             $validated['shippingDetails'] ?? []
         );
     }
