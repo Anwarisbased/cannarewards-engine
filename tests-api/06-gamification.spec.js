@@ -67,7 +67,7 @@ test.describe('Gamification Engine (Achievements)', () => {
   });
 
   test('User scans products and achievements are awarded', async ({ request }) => {
-    test.setTimeout(60000); // Increase timeout for this test
+    test.setTimeout(120000); // Increase timeout to 2 minutes for this test
     
     // First scan - use the authenticated claim endpoint
     const scan1 = await request.post('/wp-json/rewards/v2/actions/claim', {

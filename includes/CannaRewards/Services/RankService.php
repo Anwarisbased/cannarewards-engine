@@ -17,6 +17,8 @@ final class RankService {
         $this->wp = $wp;
         // Clear the old cache to avoid serialization issues
         $this->wp->deleteTransient('canna_rank_structure_dtos_v2');
+        // Pre-warm the cache
+        $this->getRankStructure();
     }
 
     /**

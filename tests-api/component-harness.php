@@ -30,13 +30,8 @@ try {
     }
 
     // Check if class is already defined to avoid conflicts
-    if (!class_exists($component_class, false)) {
-        // Get the component instance from the container
-        $component_instance = $container->get($component_class);
-    } else {
-        // If class exists, try to get it from the container anyway
-        $component_instance = $container->get($component_class);
-    }
+    // Always get the component instance from the container
+    $component_instance = $container->get($component_class);
     
     // 4. The Router: Now simplified. We build the input based on the component, then call the method.
     $input_object = null;
@@ -77,6 +72,36 @@ try {
             }
             break;
         
+        case \CannaRewards\Services\EconomyService::class:
+            // For EconomyService, we need to create the proper command object
+            if (isset($input_data['command'])) {
+                switch ($input_data['command']) {
+                    case 'RedeemRewardCommand':
+                        // Include required classes
+                        if (!class_exists('CannaRewards\\Domain\\ValueObjects\\UserId')) {
+                            include_once dirname(__DIR__) . '/includes/CannaRewards/Domain/ValueObjects/UserId.php';
+                        }
+                        if (!class_exists('CannaRewards\\Domain\\ValueObjects\\ProductId')) {
+                            include_once dirname(__DIR__) . '/includes/CannaRewards/Domain/ValueObjects/ProductId.php';
+                        }
+                        if (!class_exists('CannaRewards\\Commands\\RedeemRewardCommand')) {
+                            include_once dirname(__DIR__) . '/includes/CannaRewards/Commands/RedeemRewardCommand.php';
+                        }
+                        
+                        $input_object = new \CannaRewards\Commands\RedeemRewardCommand(
+                            \CannaRewards\Domain\ValueObjects\UserId::fromInt((int) ($input_data['userId'] ?? 0)),
+                            \CannaRewards\Domain\ValueObjects\ProductId::fromInt((int) ($input_data['productId'] ?? 0)),
+                            $input_data['shippingDetails'] ?? []
+                        );
+                        break;
+                    default:
+                        throw new InvalidArgumentException("Unsupported command for EconomyService: {$input_data['command']}");
+                }
+            } else {
+                throw new InvalidArgumentException("EconomyService requires a 'command' parameter");
+            }
+            break;
+        
         default:
             throw new InvalidArgumentException("No test harness logic defined for component: {$component_class}");
     }
@@ -88,6 +113,9 @@ try {
     } else if ($component_instance instanceof \CannaRewards\Services\UserService) {
         // Special handling for other service methods that take array args
         $result = call_user_func_array([$component_instance, $method_to_call], array_values($input_object));
+    } else if ($component_instance instanceof \CannaRewards\Services\EconomyService && $input_object instanceof \CannaRewards\Commands\RedeemRewardCommand) {
+        // Special handling for EconomyService with RedeemRewardCommand
+        $result = $component_instance->handle($input_object);
     } else {
         // Default handling for command handlers
         $result = $component_instance->handle($input_object);

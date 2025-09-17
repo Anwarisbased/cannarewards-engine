@@ -6,6 +6,14 @@
  * It MUST be excluded from all production deployments via .gitignore.
  */
 
+// Add database optimization
+if (function_exists('wpdb')) {
+    // Increase MySQL timeout settings for tests
+    global $wpdb;
+    $wpdb->query("SET SESSION wait_timeout = 600");
+    $wpdb->query("SET SESSION interactive_timeout = 600");
+}
+
 require_once dirname(__DIR__, 4) . '/wp-load.php';
 
 // A simple check to prevent accidental production execution if .gitignore fails.
@@ -14,6 +22,13 @@ if (defined('WP_ENVIRONMENT_TYPE') && WP_ENVIRONMENT_TYPE === 'production') {
     http_response_code(403);
     echo json_encode(['success' => false, 'message' => 'This script cannot be run in a production environment.']);
     exit;
+}
+
+// Add error logging for debugging
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    error_reporting(E_ALL);
+    ini_set('display_errors', 1);
+    ini_set('log_errors', 1);
 }
 
 header('Content-Type: application/json');
@@ -91,7 +106,21 @@ switch ($action) {
             exit;
         }
         update_post_meta($product_id, 'points_award', 400);
-        echo json_encode(['success' => true, 'message' => "Test product with SKU PWT-001 (ID: {$product_id}) has been prepared with 400 points award."]);
+        update_post_meta($product_id, 'points_cost', 500);
+        echo json_encode(['success' => true, 'message' => "Test product with SKU PWT-001 (ID: {$product_id}) has been prepared with 400 points award and 500 points cost.", 'product_id' => $product_id]);
+        break;
+
+    case 'get_test_product_id':
+        if (!class_exists('WooCommerce')) {
+            echo json_encode(['success' => false, 'message' => 'WooCommerce is not active.']);
+            exit;
+        }
+        $product_id = wc_get_product_id_by_sku('PWT-001');
+        if (!$product_id) {
+            echo json_encode(['success' => false, 'message' => 'Product with SKU PWT-001 does not exist.']);
+            exit;
+        }
+        echo json_encode(['success' => true, 'product_id' => $product_id]);
         break;
 
     case 'simulate_previous_scan':
@@ -131,8 +160,11 @@ switch ($action) {
             if (isset($_POST['lifetime_points'])) {
                 update_user_meta($user->ID, '_canna_lifetime_points', absint($_POST['lifetime_points']));
             }
+            // Clear any rank cache
+            delete_user_meta($user->ID, '_canna_current_rank_key');
             echo json_encode(['success' => true, 'message' => "User {$email} has been reset."]);
         } else {
+            // User doesn't exist, which is fine for reset operations
             echo json_encode(['success' => true, 'message' => "User {$email} not found, proceeding."]);
         }
         break;
