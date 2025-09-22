@@ -91,6 +91,7 @@ switch ($action) {
         $wpdb->insert($wpdb->prefix . 'canna_reward_codes', [
             'code' => $code,
             'sku'  => 'PWT-001',
+            'is_used' => 0,
         ]);
         echo json_encode(['success' => true, 'message' => "Code {$code} has been reset with SKU PWT-001."]);
         break;

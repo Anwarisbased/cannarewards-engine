@@ -37,10 +37,17 @@ function CannaRewards() {
         $container = require CANNA_PLUGIN_DIR . 'includes/container.php';
         
         // Use the container to create the main engine instance, which hooks everything into WordPress.
-        $container->get(CannaRewards\CannaRewardsEngine::class);
+        $container->get(\CannaRewards\CannaRewardsEngine::class);
     }
     return $container;
 }
 
 // Get the plugin running.
-CannaRewards();
+add_action('plugins_loaded', 'CannaRewards');
+
+// Activation hook
+register_activation_hook(__FILE__, function() {
+    // This will be called when the plugin is activated
+    require_once CANNA_PLUGIN_DIR . 'includes/canna-core-functions.php';
+    \CannaRewards\Includes\DB::activate();
+});

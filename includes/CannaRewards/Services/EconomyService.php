@@ -76,20 +76,26 @@ final class EconomyService {
         $commandClass = get_class($command);
         $policyMap = $this->getPolicyMap()[$commandClass] ?? [];
 
-        // --- Run Validation Policies ---
-        foreach ($policyMap['validation'] ?? [] as $policyClass => $valueExtractor) {
-            /** @var ValidationPolicyInterface $policy */
-            $policy = $this->container->get($policyClass);
-            $valueToValidate = $valueExtractor($command);
-            $policy->check($valueToValidate);
-        }
+        try {
+            // --- Run Validation Policies ---
+            foreach ($policyMap['validation'] ?? [] as $policyClass => $valueExtractor) {
+                /** @var ValidationPolicyInterface $policy */
+                $policy = $this->container->get($policyClass);
+                $valueToValidate = $valueExtractor($command);
+                error_log("Running policy: " . $policyClass);
+                $policy->check($valueToValidate);
+            }
 
-        // --- Run Authorization Policies ---
-        $userId = $command->userId; // Assuming userId is on the command
-        foreach ($policyMap['authorization'] ?? [] as $policyClass) {
-            /** @var AuthorizationPolicyInterface $policy */
-            $policy = $this->container->get($policyClass);
-            $policy->check($userId, $command);
+            // --- Run Authorization Policies ---
+            $userId = $command->userId; // Assuming userId is on the command
+            foreach ($policyMap['authorization'] ?? [] as $policyClass) {
+                /** @var AuthorizationPolicyInterface $policy */
+                $policy = $this->container->get($policyClass);
+                $policy->check($userId, $command);
+            }
+        } catch (\Exception $e) {
+            error_log("Exception in EconomyService: " . $e->getMessage() . " Code: " . $e->getCode());
+            throw $e;
         }
 
         // The service now uses the injected map to find the correct handler.

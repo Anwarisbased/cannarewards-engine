@@ -39,6 +39,10 @@ class Router {
             // <<<--- REFACTOR: Add password routes with Form Requests
             '/auth/request-password-reset' => ['POST', AuthController::class, 'request_password_reset', $permission_public, Requests\RequestPasswordResetRequest::class],
             '/auth/perform-password-reset' => ['POST', AuthController::class, 'perform_password_reset', $permission_public, Requests\PerformPasswordResetRequest::class],
+            
+            // Catalog routes
+            '/catalog/products' => ['GET', CatalogController::class, 'get_products', $permission_public],
+            '/catalog/products/(?P<id>\d+)' => ['GET', CatalogController::class, 'get_product', $permission_public],
         ];
 
         foreach ($routes as $endpoint => $config) {
@@ -80,7 +84,9 @@ class Router {
                 return rest_ensure_response($error);
             } catch (\Exception $e) {
                 // Generic error handling for everything else.
+                error_log("Exception caught in Router: " . $e->getMessage() . " Code: " . $e->getCode());
                 $statusCode = $e->getCode() && is_int($e->getCode()) && $e->getCode() >= 400 ? $e->getCode() : 500;
+                error_log("Status code determined: " . $statusCode);
                 $error = new \WP_Error('internal_error', $e->getMessage(), ['status' => $statusCode]);
                 return rest_ensure_response($error);
             }

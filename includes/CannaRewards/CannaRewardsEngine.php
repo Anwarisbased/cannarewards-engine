@@ -23,6 +23,22 @@ final class CannaRewardsEngine {
     public function init() {
         Integrations::init();
 
+        // --- PERFORMANCE OPTIMIZATION: TRUE HEADLESS MODE ---
+        // This prevents the theme from loading on REST API requests, drastically reducing response time.
+        add_filter('pre_option_template', static function ($value) {
+            if (defined('REST_REQUEST') && REST_REQUEST) {
+                return '';
+            }
+            return $value;
+        });
+        add_filter('pre_option_stylesheet', static function ($value) {
+            if (defined('REST_REQUEST') && REST_REQUEST) {
+                return '';
+            }
+            return $value;
+        });
+        // --- END OPTIMIZATION ---
+
         if (!class_exists('WooCommerce')) {
             add_action('admin_notices', function() {
                 echo '<div class="error"><p><strong>CannaRewards Engine Warning:</strong> WooCommerce is not installed or active.</p></div>';

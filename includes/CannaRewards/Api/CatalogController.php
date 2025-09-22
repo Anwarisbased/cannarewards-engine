@@ -2,19 +2,8 @@
 namespace CannaRewards\Api;
 
 use WP_REST_Request;
-use WP_REST_Response;
-use WP_Error;
-use Exception;
-use CannaRewards\Api\Responders\SuccessResponder;
-use CannaRewards\Api\Responders\ErrorResponder;
-use CannaRewards\Api\Responders\BadRequestResponder;
-use CannaRewards\Api\Responders\NotFoundResponder;
 use CannaRewards\Services\CatalogService;
-
-// Exit if accessed directly.
-if ( ! defined( 'WPINC' ) ) {
-    die;
-}
+use Exception;
 
 /**
  * Catalog Service Controller (V2)
@@ -27,42 +16,44 @@ class CatalogController {
         $this->catalogService = $catalogService;
     }
 
+    private function send_cached_response(array $data, int $minutes = 5): \WP_REST_Response {
+        $response = ApiResponse::success($data);
+        // This is the correct way to add headers. It must be done on the final WP_REST_Response object.
+        $response->header('Cache-Control', "public, s-maxage=" . ($minutes * 60) . ", max-age=" . ($minutes * 60));
+        return $response;
+    }
+
     /**
      * Callback for GET /v2/catalog/products
      * Fetches a list of all reward products.
-     *
-     * @param WP_REST_Request $request The incoming API request.
-     * @return SuccessResponder|ErrorResponder The API response.
      */
-    public function get_products( WP_REST_Request $request ) {
+    public function get_products(WP_REST_Request $request): \WP_REST_Response {
         try {
             $products = $this->catalogService->get_all_reward_products();
-            return new SuccessResponder($products);
+            // Use the new helper method which now returns a WP_REST_Response
+            return $this->send_cached_response(['products' => $products]);
         } catch (Exception $e) {
-            return new ErrorResponder('Failed to fetch products.', 'server_error', 500);
+            // ApiResponse::error returns a WP_Error, which the REST server handles correctly.
+            return rest_ensure_response(ApiResponse::error('Failed to fetch products.', 'server_error', 500));
         }
     }
 
     /**
      * Callback for GET /v2/catalog/products/{id}
-     * Fetches a single reward product and adds eligibility context for the current user.
-     *
-     * @param WP_REST_Request $request The incoming API request.
-     * @return SuccessResponder|BadRequestResponder|NotFoundResponder The API response.
      */
-    public function get_product( WP_REST_Request $request ) {
+    public function get_product(WP_REST_Request $request): \WP_REST_Response {
         $product_id = (int) $request->get_param('id');
-        if ( empty($product_id) ) {
-            return new BadRequestResponder('Product ID is required.');
+        if (empty($product_id)) {
+            return rest_ensure_response(ApiResponse::bad_request('Product ID is required.'));
         }
 
         $user_id = get_current_user_id();
         $product_data = $this->catalogService->get_product_with_eligibility($product_id, $user_id);
 
         if (!$product_data) {
-            return new NotFoundResponder('Product not found.');
+            return rest_ensure_response(ApiResponse::not_found('Product not found.'));
         }
         
-        return new SuccessResponder($product_data);
+        return ApiResponse::success($product_data);
     }
 }
